@@ -1,0 +1,10 @@
+! Tue, 04 Nov 2025 15:59:52 +0000
+! pybdsim.Builder Lattice, using pybdsim version 3.6.2.dev81+ga62931a 
+! LATTICE SEQUENCE DEFINITION
+
+l0: line = (LHA_TR_VAC_DRI_00, LHA_TR_DIA_COL_0201,
+	LHA_TR_MAG_QUAD_0201, LHA_TR_VAC_DRI_0401, LHA_TR_VAC_DRI_0402,
+	LHA_TR_DIA_COL_0202, LHA_TR_MAG_QUAD_0202, LHA_TR_VAC_DRI_0403,
+	LHA_TR_VAC_DRI_0404, LHA_TR_FINAL_APER);
+lattice: line = (l0);
+use, period=lattice;

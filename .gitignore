@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# PyCharm
+.idea/
+
+# Data / outputs
+*.root
+*.dat
+*.csv
+99-Scratch/
+
+# OS
+.DS_Store
+

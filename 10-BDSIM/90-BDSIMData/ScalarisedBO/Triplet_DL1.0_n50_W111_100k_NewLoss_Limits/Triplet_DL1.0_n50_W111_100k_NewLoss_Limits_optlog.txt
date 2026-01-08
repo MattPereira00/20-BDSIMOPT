@@ -1,0 +1,13 @@
+--- Bayesian Optimization Run (triplet) ---
+Max drift length: 1.0, n_calls: 50
+
+[010] loss=3231.4933, transmission=0.0029, asymmetry=1.5954, mean_alpha=0.0013, X=[1 0 0.704 0.04 0.02 0.02]
+[020] loss=8985.7542, transmission=0.0011, asymmetry=2.7448, mean_alpha=0.0098, X=[0 0.409 0.55 0.0235 0.0272 0.0388]
+[030] loss=10000.0000, transmission=0.0145, asymmetry=4.1958, mean_alpha=0.0047, X=[0 0.171 0.635 0.02 0.0397 0.02]
+[040] loss=135.8016, transmission=0.0255, asymmetry=0.3788, mean_alpha=0.0053, X=[0.292 0 0 0.0324 0.04 0.04]
+
+Saved detailed results to: 90-BDSIMData/Triplet_DL1.0_n50_W111_100k_NewLoss_Limits/triplet_results.csv
+
+--- Optimization Complete ---
+Optimised Configuration: [0.292 0 0 0.0324 0.04 0.04]
+transmission = 0.025 ± 0.001, asymmetry = 0.969 ± 0.036,divergence= 0.005 ± 0.000,

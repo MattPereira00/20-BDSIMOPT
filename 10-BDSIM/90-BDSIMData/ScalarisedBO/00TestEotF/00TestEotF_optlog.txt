@@ -1,0 +1,9 @@
+--- Bayesian Optimization Run (triplet) ---
+Max drift length: 1.0, n_calls: 10
+
+
+Saved detailed results to: 90-BDSIMData/00TestEotF/triplet_results.csv
+
+--- Optimization Complete ---
+Optimised Configuration: [0.475 0.715 0.0838 0.0359 0.0293 0.0305]
+transmission = 0.001 ± 0.000, asymmetry = 1.052 ± 0.438,divergence= 0.027 ± 0.003,

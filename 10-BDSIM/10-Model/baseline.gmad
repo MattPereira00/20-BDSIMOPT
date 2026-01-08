@@ -1,0 +1,10 @@
+! Nozzle Baseline
+
+include baseline_components.gmad;
+include baseline_sequence.gmad;
+!include baseline_beam.gmad;
+include beam_100k.gmad;
+include baseline_options.gmad;
+
+
+sample, all;

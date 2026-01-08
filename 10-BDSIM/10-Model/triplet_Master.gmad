@@ -1,0 +1,12 @@
+! Mon, 03 Nov 2025 09:21:43 +0000
+! pybdsim.Builder Lattice, using pybdsim version 3.6.2.dev81+ga62931a 
+! Number of Elements:	14
+! Total length:		0.21000399999999997m
+
+include triplet_Master_components.gmad;
+include triplet_Master_sequence.gmad;
+include triplet_Master_beam.gmad;
+include triplet_Master_options.gmad;
+
+
+sample, all;

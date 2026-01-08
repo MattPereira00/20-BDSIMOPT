@@ -1,0 +1,14 @@
+! Tue, 04 Nov 2025 15:59:52 +0000
+! pybdsim.Builder Lattice, using pybdsim version 3.6.2.dev81+ga62931a 
+! COMPONENT DEFINITION
+
+LHA_TR_VAC_DRI_00: gap, l=0.02;
+LHA_TR_DIA_COL_0201: ecol, l=1e-06, material="Cu", xsize=0.01, ysize=0.01;
+LHA_TR_MAG_QUAD_0201: quadrupole, aper1=0.01, k1=213.572, l=0.02;
+LHA_TR_VAC_DRI_0401: gap, l=0.02;
+LHA_TR_VAC_DRI_0402: gap, l=0.0;
+LHA_TR_DIA_COL_0202: ecol, l=1e-06, material="Cu", xsize=0.01, ysize=0.01;
+LHA_TR_MAG_QUAD_0202: quadrupole, aper1=0.01, k1=-213.572, l=0.02;
+LHA_TR_VAC_DRI_0403: gap, l=0.19026587378196666;
+LHA_TR_VAC_DRI_0404: gap, l=0.01;
+LHA_TR_FINAL_APER: ecol, l=1e-06, material="Cu", xsize=0.01, ysize=0.01;

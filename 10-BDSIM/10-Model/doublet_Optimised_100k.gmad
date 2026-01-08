@@ -1,0 +1,12 @@
+! Wed, 12 Nov 2025 14:07:17 +0000
+! pybdsim.Builder Lattice, using pybdsim version 3.6.2.dev81+ga62931a 
+! Number of Elements:	14
+! Total length:		0.802517991955074m
+
+include doublet_Optimised_components.gmad;
+include doublet_Optimised_sequence.gmad;
+include beam_100k.gmad;
+include doublet_Optimised_options.gmad;
+
+
+sample, all;

@@ -1,0 +1,28 @@
+--- Bayesian Optimization Run (triplet) ---
+Max drift length: 1.0, n_calls: 200
+
+[010] loss=3586.6236, transmission=0.0029, asymmetry=1.5954, mean_alpha=0.0013, X=[1 0 0.704 0.04 0.02 0.02]
+[020] loss=8804.3032, transmission=0.0009, asymmetry=2.6872, mean_alpha=0.0430, X=[0.979 0.261 0 0.02 0.0342 0.04]
+[030] loss=10000.0000, transmission=0.0065, asymmetry=6.4503, mean_alpha=0.0144, X=[0.615 0.0726 0.258 0.0237 0.0205 0.0332]
+[040] loss=10000.0000, transmission=0.0097, asymmetry=5.3023, mean_alpha=0.0075, X=[0.238 0.211 0.685 0.0308 0.02 0.02]
+[050] loss=1395.6667, transmission=0.0004, asymmetry=0.6401, mean_alpha=0.0193, X=[1 0.8 0 0.02 0.02 0.02]
+[060] loss=1284.5998, transmission=0.0012, asymmetry=0.5830, mean_alpha=0.0430, X=[0.701 0.692 0 0.02 0.02 0.04]
+[070] loss=10000.0000, transmission=0.0015, asymmetry=4.0757, mean_alpha=0.0131, X=[1 0 0.492 0.0301 0.02 0.0368]
+[080] loss=1776.5155, transmission=0.0066, asymmetry=1.0136, mean_alpha=0.0030, X=[0.741 0 0 0.0294 0.02 0.02]
+[090] loss=10000.0000, transmission=0.0209, asymmetry=4.9902, mean_alpha=0.0046, X=[0 0 0.558 0.04 0.04 0.04]
+[100] loss=10000.0000, transmission=0.0028, asymmetry=4.1985, mean_alpha=0.0140, X=[0 0.8 0.395 0.04 0.0306 0.02]
+[110] loss=2843.6357, transmission=0.0029, asymmetry=1.3650, mean_alpha=0.0014, X=[1 0 0.632 0.02 0.02 0.02]
+[120] loss=2880.6073, transmission=0.0173, asymmetry=1.5470, mean_alpha=0.0075, X=[0.259 0 0.195 0.02 0.02 0.02]
+[130] loss=10000.0000, transmission=0.0035, asymmetry=3.2704, mean_alpha=0.0246, X=[0.85 0.0967 0 0.02 0.0318 0.04]
+[140] loss=800.3845, transmission=0.0047, asymmetry=0.1629, mean_alpha=0.0388, X=[0.0637 0.907 0 0.0312 0.02 0.04]
+[150] loss=10000.0000, transmission=0.0009, asymmetry=3.1233, mean_alpha=0.0179, X=[0.85 0.514 0.154 0.02 0.02 0.0207]
+[160] loss=787.2827, transmission=0.0199, asymmetry=0.7237, mean_alpha=0.0190, X=[0 0.39 0 0.04 0.0306 0.02]
+[170] loss=442.1975, transmission=0.0166, asymmetry=0.3290, mean_alpha=0.0110, X=[0.245 0.351 0 0.02 0.02 0.02]
+[180] loss=10000.0000, transmission=0.0044, asymmetry=4.1710, mean_alpha=0.0095, X=[0 0.457 0.732 0.04 0.04 0.02]
+[190] loss=1927.9369, transmission=0.0044, asymmetry=1.0392, mean_alpha=0.0026, X=[0.666 0 0.55 0.02 0.02 0.02]
+
+Saved detailed results to: 90-BDSIMData/Triplet_DL1.0_n200_W211_100k_NewLoss_Limits/triplet_results.csv
+
+--- Optimization Complete ---
+Optimised Configuration: [0 0 0 0.02 0.04 0.02]
+transmission = 0.225 ± 0.002, asymmetry = 0.597 ± 0.012,divergence= 0.031 ± 0.000,
