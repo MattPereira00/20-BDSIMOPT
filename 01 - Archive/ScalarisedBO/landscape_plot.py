@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Load results
-df = pd.read_csv("90-BDSIMData/ScalarisedBO/Triplet_NoNozzle_DL0.5_n200_W111/triplet_results.csv")
+df = pd.read_csv("Triplet_NoNozzle_DL0.5_n200_W111/triplet_results.csv")
 
 T = df["T"]
 A = df["A"]

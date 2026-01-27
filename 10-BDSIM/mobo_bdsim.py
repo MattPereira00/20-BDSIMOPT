@@ -1,11 +1,7 @@
-import numpy as np
 import torch
 from torch import Tensor
-import pybdsim
 import os, subprocess
-import re
 import matplotlib.pyplot as plt
-import pandas as pd
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 
@@ -18,12 +14,12 @@ from botorch.optim import optimize_acqf
 from botorch.sampling.normal import SobolQMCNormalSampler
 from botorch.acquisition.multi_objective.monte_carlo import qExpectedHypervolumeImprovement
 from botorch.utils.multi_objective.pareto import is_non_dominated
-from botorch.utils.transforms import normalize, unnormalize
+from botorch.utils.transforms import unnormalize
 from botorch.utils.multi_objective.box_decompositions import NondominatedPartitioning
 
 from loss import *
 from builder import *
-import sys
+
 
 class BDSIMMoBO:
     def __init__(
@@ -35,8 +31,7 @@ class BDSIMMoBO:
         n_iter=100,
         batch_size=4,
         mc_samples=256,
-        device="cpu",
-        dtype=torch.double,
+        device="cpu"
     ):
         self.builder = builder
         self.model = model
@@ -46,7 +41,7 @@ class BDSIMMoBO:
         self.logfile = os.path.join(self.runDir, f"{self.filename}_optlog.txt")
 
         self.device = torch.device(device)
-        self.dtype = dtype
+        self.dtype = torch.double
 
         # BO hyperparameters
         self.n_initial = n_initial
@@ -62,16 +57,20 @@ class BDSIMMoBO:
                 [0.0, 0.0, 0.0, 0.03, 0.03, 0.03, 0.01, 0.01, 0.01, 0.0, 0.0, 0.0, 0.03, 0.03, 0.03, 0.01, 0.01, 0.01],
                 [0.5, 0.5, 0.5, 0.05, 0.05, 0.05, 0.03, 0.03, 0.03, 0.5, 0.5, 0.5, 0.05, 0.05, 0.05, 0.03, 0.03, 0.03],
             ],
-            dtype=dtype,
+            dtype=self.dtype,
             device=self.device,
         )
 
         # EHVI reference point: (T, -A, -D) - the worst possible result outside of feasibility
-        self.ref_point = torch.tensor([0.0, 1.0, 1.0], dtype=dtype)
+        self.ref_point = torch.tensor([0.0, 1.0, 1.0], dtype=self.dtype)
 
         # Containers for training data
         self.train_X = None
         self.train_Y = None
+
+    @property
+    def n_objectives(self):
+        return len(self.objectives)
 
     def _write_log(self, text):
         """Helper to write text to log file and stdout"""
@@ -138,7 +137,6 @@ class BDSIMMoBO:
                 run_id = self.run_id
                 self.run_id += 1
                 futures[pool.submit(self._run, X_np[i], run_id)] = i
-
 
             for fut in as_completed(futures):
                 i = futures[fut]

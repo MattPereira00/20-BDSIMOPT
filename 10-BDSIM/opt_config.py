@@ -11,4 +11,3 @@ class OptimisationConfig:
     n_iter: int
     batch_size: int
     mc_samples: int = 64
-    device: str = "cpu"
