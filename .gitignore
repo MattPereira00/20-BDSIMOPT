@@ -10,6 +10,7 @@ __pycache__/
 *.root
 *.dat
 *.csv
+10-BDSIM/10-Model/
 99-Scratch/
 
 # OS

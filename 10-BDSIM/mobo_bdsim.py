@@ -59,8 +59,8 @@ class BDSIMMoBO:
         # Parameter bounds: 3 drift lengths, 3 quad lengths, 3 quad apertures - min then max
         self.bounds = torch.tensor(
             [
-                [0.0, 0.0, 0.0, 0.03, 0.03, 0.03, 0.01, 0.01, 0.01],
-                [0.5, 0.5, 0.5, 0.05, 0.05, 0.05, 0.0],
+                [0.0, 0.0, 0.0, 0.03, 0.03, 0.03, 0.01, 0.01, 0.01, 0.0, 0.0, 0.0, 0.03, 0.03, 0.03, 0.01, 0.01, 0.01],
+                [0.5, 0.5, 0.5, 0.05, 0.05, 0.05, 0.03, 0.03, 0.03, 0.5, 0.5, 0.5, 0.05, 0.05, 0.05, 0.03, 0.03, 0.03],
             ],
             dtype=dtype,
             device=self.device,
@@ -91,7 +91,7 @@ class BDSIMMoBO:
         modelpath = f"{self.builder.model_dir}/{self.model.casefold()}_{index}.gmad"
         outfile = f"{self.runDir}/output-{index}"
 
-        self.builder.build_pmq_triplet(index, lengths)
+        self.builder.build_halbach_double_triplet(index, lengths)
         n_generate = self.builder.Options["ngenerate"]
 
         pybdsim.Run.Bdsim(
@@ -181,7 +181,7 @@ class BDSIMMoBO:
         return pareto_X, pareto_Y
 
     def generate_initial_data(self):
-        sobol = torch.quasirandom.SobolEngine(dimension=6)
+        sobol = torch.quasirandom.SobolEngine(dimension=18)
         X = sobol.draw(self.n_initial).to(dtype=self.dtype, device=self.device)
         X = unnormalize(X, self.bounds)
 

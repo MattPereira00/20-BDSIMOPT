@@ -33,10 +33,10 @@ if __name__ == "__main__":
     BDSIMMoBO = BDSIMMoBO(
         Builder,
         model="triplet",
-        filename="MOBO_init_full",
+        filename="MOBO_Double_Triplet_24_40_4",
         n_initial=24,
         n_iter=40,
-        batch_size=4
+        batch_size=5
     )
     BDSIMMoBO.optimise()
 
