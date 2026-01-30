@@ -152,4 +152,4 @@ class Builder:
         # self.Line.AddECol("LHA_TR_DIA_NOZZLE", length=0.05, xsize=0.002, ysize=0.002, xsizeOut=0.00287, ysizeOut=0.00287, material="Cu")
         self.line.AddECol(f"LHA_TR_FINAL_APER", length=1e-6, xsize=0.01, ysize=0.01, material="Cu")
 
-        self.line.Write(f"{self.model_dir}/triplet_{fname}.gmad")
+        self.line.Write(f"{self.model_dir}/double_triplet_{fname}.gmad")
