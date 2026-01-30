@@ -201,3 +201,87 @@ class TripletCapture(OptProblem):
 
         return torch.tensor(out, dtype=torch.double, device=self.config.device)
 
+class DoubleTripletProblem(OptProblem):
+    def __init__(self, model, config: OptConfig):
+        super().__init__(model, config)
+
+        self.objective_names = ["T", "A", "D"]
+        self.objective_signs = {
+            "T": +1,
+            "A": -1,
+            "D": -1,
+        }
+
+    def evaluate(self, X: torch.Tensor):
+        X_np = X.detach().cpu().numpy()
+        n = X_np.shape[0]
+
+        raw_results = [None] * n
+        packed = [None] * n
+
+        with ProcessPoolExecutor(max_workers=self.config.batch_size) as pool:
+            futures = {
+                pool.submit(self.model.run, X_np[i], self.run_id + i): i
+                for i in range(n)
+            }
+            self.run_id += n
+
+            for fut in as_completed(futures):
+                i = futures[fut]
+                try:
+                    raw = fut.result()
+                    raw_results[i] = raw
+                    packed[i] = self.pack_objectives(raw)
+                except Exception as e:
+                    print(f"[Worker {i}] ERROR:", e)
+                    fallback = {"T": 0.0, "A": 1e3, "D": 1e3}
+                    raw_results[i] = fallback
+                    packed[i] = self.pack_objectives(fallback)
+
+        Y = torch.stack(packed, dim=0)
+        return Y, raw_results
+
+    def pack_objectives(self, raw: dict) -> torch.Tensor:
+        out = []
+        for obj in self.config.objectives:
+            val = float(raw[obj])
+            if obj in ("A", "D"):
+                val = -val
+            out.append(val)
+
+        return torch.tensor(out, dtype=torch.double, device=self.config.device)
+
+    def get_constraints(self):
+        constraints = []
+
+        for key, value in self.config.constraints.items():
+            obj, kind = key.rsplit("_", 1)
+            idx = self.objective_names.index(obj)
+            sign = self.objective_signs[obj]
+
+            if kind == "min":
+                # physical >= v
+                # stored = s * physical
+                # => s*physical - s*v >= 0
+                constraints.append(
+                    lambda Y, i=idx, s=sign, v=value: Y[..., i] - s * v
+                )
+            else:
+                # physical <= v
+                # => s*v - s*physical >= 0
+                constraints.append(
+                    lambda Y, i=idx, s=sign, v=value: s * v - Y[..., i]
+                )
+
+        return constraints
+
+    def objective_labels(self):
+        return ["Transmission", "Asymmetry", "Divergence"]
+
+    def format_result(self, x, y, raw):
+        return (
+            f"T={raw['T']:.4f}  "
+            f"A={raw['A']:.4f}  "
+            f"D={raw['D']:.4f}   "
+            f"X={x.cpu().numpy()}"
+        )

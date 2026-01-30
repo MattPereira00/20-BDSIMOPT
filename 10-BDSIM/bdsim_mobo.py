@@ -198,6 +198,7 @@ class BDSIMMoBO:
         ax.scatter(
             Y_f[:, 0],
             Y_f[:, 1],
+            Y_f[:, 2],
             alpha=0.3,
             label="Feasible"
         )
@@ -205,6 +206,7 @@ class BDSIMMoBO:
         ax.scatter(
             Yp[:, 0],
             Yp[:, 1],
+            Yp[:, 2],
             s=80,
             label="Pareto"
         )

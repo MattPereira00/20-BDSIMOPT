@@ -66,10 +66,11 @@ class TripletModel(OptModel):
         return {"T": T, "A": A, "D": D}
 
 class DoubleTripletModel(OptModel):
-    def __init__(self, builder:Builder):
+    def __init__(self, builder:Builder, frozen_triplet):
         self.builder = builder
         self.model_dir = self.builder.model_dir
         self.data_dir = self.builder.data_dir
+        self.fixed = frozen_triplet
 
     def run(self, X, run_id, cleanup=True):
         """
@@ -78,7 +79,14 @@ class DoubleTripletModel(OptModel):
         :param cleanup:
         :return: dict of objective values after run
         """
-        self.builder.build_halbach_double_triplet(run_id, X)
+
+        triplet2 = self.unpack_triplet2(X)
+
+        params = {}
+        params.update(self.fixed)
+        params.update(triplet2)
+
+        self.builder.build_halbach_double_triplet(run_id, self.pack_params(params))
 
         modelpath = f"{self.builder.model_dir}/double_triplet_{run_id}.gmad"
         outfile = f"{self.data_dir}/output-{run_id}"
@@ -112,3 +120,26 @@ class DoubleTripletModel(OptModel):
             os.remove(outfile + "_optics.root")
 
         return {"T": T, "A": A, "D": D}
+
+    def unpack_triplet2(self, x):
+        return {
+            "d4": float(x[0]),
+            "d5": float(x[1]),
+            "d6": float(x[2]),
+            "q4_L": float(x[3]),
+            "q5_L": float(x[4]),
+            "q6_L": float(x[5]),
+            "aper4": float(x[6]),
+            "aper5": float(x[7]),
+            "aper6": float(x[8]),
+        }
+
+    def pack_params(self, params):
+        return [
+            params["d1"], params["d2"], params["d3"],
+            params["q1_L"], params["q2_L"], params["q3_L"],
+            params["aper1"], params["aper2"], params["aper3"],
+            params["d4"], params["d5"], params["d6"],
+            params["q4_L"], params["q5_L"], params["q6_L"],
+            params["aper4"], params["aper5"], params["aper6"],
+        ]
