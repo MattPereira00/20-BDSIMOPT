@@ -31,6 +31,15 @@ class OptProblem(ABC):
         """
         pass
 
+    def objective_index(self, name: str) -> int:
+        try:
+            return self.objective_names.index(name)
+        except ValueError:
+            raise ValueError(
+                f"Constraint refers to objective '{name}', "
+                f"but this problem has objectives {self.objective_names}"
+            )
+
     @abstractmethod
     def get_constraints(self) -> List[Callable]:
         """
@@ -56,7 +65,7 @@ class OptProblem(ABC):
             if val.ndim != 1:
                 val = val.view(-1)
 
-            feasible &= (val <= 0)
+            feasible &= (val >= 0)
 
         return feasible
 
@@ -76,29 +85,22 @@ class OptProblem(ABC):
 
     def get_ref_point(self) -> torch.Tensor:
         """
-        Return a pessimistic reference point in objective space
-        (same order and sign as pack_objectives).
+        Generic pessimistic reference point:
+        works for capture, optics matching, and anything else.
         """
-        ref = []
-        for obj in self.config.objectives:
-            if obj == "T":
-                ref.append(0.0)      # worst transmission
-            elif obj in ("A", "D"):
-                ref.append(1e3)      # because stored as -A, -D
-            else:
-                raise ValueError(f"Unknown objective {obj}")
+        ref = [-1e3] * len(self.config.objectives)
         return torch.tensor(ref, dtype=torch.double, device=self.config.device)
 
 
 class TripletCapture(OptProblem):
     def __init__(self, model, config: OptConfig):
         super().__init__(model, config)
-        self.objective_names = ["T",  "D"]
+        self.objective_names = ["T", "A", "D"]
         self.objective_signs = {
             "T": +1,
+            "A": -1,
             "D": -1,
         }
-
     def evaluate(self, X: torch.Tensor):
         X_np = X.detach().cpu().numpy()
         n = X_np.shape[0]
@@ -132,31 +134,20 @@ class TripletCapture(OptProblem):
 
         for key, value in self.config.constraints.items():
             obj, kind = key.rsplit("_", 1)
-            idx = self.objective_names.index(obj)
 
-            if obj == "T":
-                if kind == "min":
-                    # T >= value  →  Y_T - value >= 0
-                    constraints.append(
-                        lambda Y, i=idx, v=value: Y[..., i] - v
-                    )
-                else:
-                    # T <= value  →  value - Y_T >= 0
-                    constraints.append(
-                        lambda Y, i=idx, v=value: v - Y[..., i]
-                    )
+            idx = self.objective_index(obj)
+            sign = self.objective_signs[obj]
 
-            elif obj in ("A", "D"):
-                if kind == "min":
-                    # D >= value → -D <= -value → -value - Y_D >= 0
-                    constraints.append(
-                        lambda Y, i=idx, v=value: -v - Y[..., i]
-                    )
-                else:
-                    # D <= value → -D >= -value → Y_D + value >= 0
-                    constraints.append(
-                        lambda Y, i=idx, v=value: Y[..., i] + v
-                    )
+            if kind == "min":
+                constraints.append(
+                    lambda Y, i=idx, s=sign, v=value: s * Y[..., i] - v
+                )
+            elif kind == "max":
+                constraints.append(
+                    lambda Y, i=idx, s=sign, v=value: v - s * Y[..., i]
+                )
+            else:
+                raise ValueError(f"Unknown constraint type '{kind}'")
 
         return constraints
 
@@ -181,7 +172,7 @@ class TripletCapture(OptProblem):
         return feasible
 
     def objective_labels(self):
-        return ["Transmission", "Divergence"]
+        return ["Transmission", "Asymmetry", "Divergence"]
 
     def format_result(self, x, y, raw):
         return (
@@ -256,22 +247,22 @@ class DoubleTripletProblem(OptProblem):
 
         for key, value in self.config.constraints.items():
             obj, kind = key.rsplit("_", 1)
-            idx = self.objective_names.index(obj)
+
+            idx = self.objective_index(obj)
             sign = self.objective_signs[obj]
 
             if kind == "min":
-                # physical >= v
-                # stored = s * physical
-                # => s*physical - s*v >= 0
                 constraints.append(
-                    lambda Y, i=idx, s=sign, v=value: Y[..., i] - s * v
+                    lambda Y, i=idx, s=sign, v=value: s * Y[..., i] - v
+                )
+            elif kind == "max":
+                constraints.append(
+                    lambda Y, i=idx, s=sign, v=value: v - s * Y[..., i]
                 )
             else:
-                # physical <= v
-                # => s*v - s*physical >= 0
-                constraints.append(
-                    lambda Y, i=idx, s=sign, v=value: s * v - Y[..., i]
-                )
+                raise ValueError(f"Unknown constraint type '{kind}'")
+
+        return constraints
 
         return constraints
 
@@ -285,3 +276,97 @@ class DoubleTripletProblem(OptProblem):
             f"D={raw['D']:.4f}   "
             f"X={x.cpu().numpy()}"
         )
+
+class S1GLProblem(OptProblem):
+    def __init__(
+        self,
+        model,
+        config: OptConfig,
+        targets: dict,
+    ):
+        super().__init__(model, config)
+
+        # Targets at end of line
+        self.targets = targets
+        # e.g. {"sigma_x": 3e-3, "sigma_y": 3e-3}
+
+        self.objective_names = ["sig_x_err", "sig_y_err", "sigma_xp_err", "sigma_yp_err"]
+
+    # ----------------------------
+    # Core evaluation
+    # ----------------------------
+    def evaluate(self, X: torch.Tensor):
+        X_np = X.detach().cpu().numpy()
+        n = X_np.shape[0]
+
+        raw_results = [None] * n
+        packed = [None] * n
+
+        with ProcessPoolExecutor(max_workers=self.config.batch_size) as pool:
+            futures = {
+                pool.submit(self.model.run, X_np[i], self.run_id + i): i
+                for i in range(n)
+            }
+            self.run_id += n
+
+            for fut in as_completed(futures):
+                i = futures[fut]
+                try:
+                    raw = fut.result()
+                except Exception as e:
+                    print(f"[Worker {i}] ERROR:", e)
+                    raw = self.fallback_raw()
+
+                raw_results[i] = raw
+                packed[i] = self.pack_objectives(raw)
+
+        Y = torch.stack(packed, dim=0)
+        return Y, raw_results
+
+
+    def pack_objectives(self, raw: dict) -> torch.Tensor:
+        sigma_x = raw["sigma_x"]
+        sigma_y = raw["sigma_y"]
+        sigma_xp = raw["sigma_xp"]
+        sigma_yp = raw["sigma_yp"]
+
+        obj_x = -abs(sigma_x - self.targets["sigma_x"])
+        obj_y = -abs(sigma_y - self.targets["sigma_y"])
+        obj_xp = -abs(sigma_xp - self.targets["sigma_xp"])
+        obj_yp = -abs(sigma_yp - self.targets["sigma_yp"])
+
+        return torch.tensor(
+            [obj_x, obj_y, obj_xp, obj_yp],
+            dtype=torch.double,
+            device=self.config.device,
+        )
+
+    def get_constraints(self):
+        # No hard constraints by default - needed for template (probably a bad thing)
+        return []
+
+    def format_result(self, x, y, raw):
+        return (
+            f"sig_x={raw['sigma_x']:.4e}  "
+            f"sig_y={raw['sigma_y']:.4e}  "
+            f"sig_x={raw['sigma_xp']:.4e}  "
+            f"sig_y={raw['sigma_yp']:.4e}  "
+            f"X={x.cpu().numpy()}"
+        )
+
+    def objective_labels(self):
+        return [
+            "sigma_x error",
+            "sigma_y error",
+            "sigma_xp error",
+            "sigma_yp error",
+        ]
+
+    def fallback_raw(self):
+        # Very bad optics
+        return {
+            "sig_x": 1.0,
+            "sig_y": 1.0,
+            "sigma_xp": 1.0,
+            "sigma_yp": 1.0,
+        }

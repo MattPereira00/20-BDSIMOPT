@@ -120,10 +120,25 @@ class BDSIMMoBO:
         for it in range(self.config.n_iter):
             model = self.build_model(self.train_X, self.train_Y).to(self.device)
 
+            # Get current feasible Pareto front
+            _, pareto_Y, _ = self.get_pareto_front()
+
+            # If no feasible Pareto points, pass an empty tensor with correct shape/dtype,
+            # otherwise use the pareto front
+            if pareto_Y.shape[0] == 0:
+                Y_for_part = self.train_Y.new_empty((0, self.train_Y.shape[1]))
+            else:
+                Y_for_part = pareto_Y
+
             partitioning = NondominatedPartitioning(
                 ref_point=self.problem.get_ref_point(),
-                Y=self.train_Y,
+                Y=Y_for_part,
             )
+
+            # partitioning = NondominatedPartitioning(
+            #     ref_point=self.problem.get_ref_point(),
+            #     Y=self.train_Y,
+            # )
 
             sampler = SobolQMCNormalSampler(
                 sample_shape=torch.Size([self.config.mc_samples])
@@ -136,6 +151,8 @@ class BDSIMMoBO:
                 sampler=sampler,
                 constraints=self.problem.get_constraints(),
             )
+
+            acq.eta = 1e-3
 
             bounds = torch.tensor(
                 list(self.config.bounds.values()),
@@ -213,6 +230,7 @@ class BDSIMMoBO:
 
         ax.set_xlabel(labels[0])
         ax.set_ylabel(labels[1])
+        ax.set_ylabel(labels[2])
         ax.legend()
 
         plt.tight_layout()

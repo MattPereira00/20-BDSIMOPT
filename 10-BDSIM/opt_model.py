@@ -143,3 +143,45 @@ class DoubleTripletModel(OptModel):
             params["q4_L"], params["q5_L"], params["q6_L"],
             params["aper4"], params["aper5"], params["aper6"],
         ]
+
+class S1GLModel(OptModel):
+    def __init__(self, builder):
+        self.builder = builder
+        self.model_dir = builder.model_dir
+        self.data_dir = builder.data_dir
+
+    def run(self, X, run_id, cleanup=True):
+        # X = [b4, b5, b6, b7]
+        self.builder.build_s1GL(run_id, X)
+
+        modelpath = f"{self.model_dir}/S1GL_{run_id}.gmad"
+        outfile = f"{self.data_dir}/output-{run_id}"
+
+        pybdsim.Run.Bdsim(
+            gmadpath=modelpath,
+            outfile=outfile,
+            batch=True,
+            silent=True,
+            ngenerate=self.builder.Options["ngenerate"],
+        )
+
+        subprocess.call([
+            "rebdsimOptics",
+            f"{outfile}.root",
+            f"{outfile}_optics.root",
+            "--emittanceOnTheFly"
+        ], stdout=open(os.devnull, "wb"))
+
+        sigma_x, sigma_y, sigma_xp, sigma_yp = extract_optics(outfile)
+
+        # Cleanup
+        if cleanup:
+            os.remove(modelpath)
+            os.remove(f"{self.builder.model_dir}/S1GL_{run_id}_beam.gmad")
+            os.remove(f"{self.builder.model_dir}/S1GL_{run_id}_components.gmad")
+            os.remove(f"{self.builder.model_dir}/S1GL_{run_id}_options.gmad")
+            os.remove(f"{self.builder.model_dir}/S1GL_{run_id}_sequence.gmad")
+            os.remove(outfile + ".root")
+            os.remove(outfile + "_optics.root")
+
+        return {"sigma_x": sigma_x, "sigma_y": sigma_y, "sigma_xp": sigma_xp, "sigma_yp": sigma_yp}

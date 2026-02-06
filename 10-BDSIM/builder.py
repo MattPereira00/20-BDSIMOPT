@@ -153,3 +153,25 @@ class Builder:
         self.line.AddECol(f"LHA_TR_FINAL_APER", length=1e-6, xsize=0.01, ysize=0.01, material="Cu")
 
         self.line.Write(f"{self.model_dir}/double_triplet_{fname}.gmad")
+
+    def build_s1GL(self, fname, params):
+        self.line = pybdsim.Builder.Machine()
+        self.__add_beam()
+        self.__add_options()
+        self.line.AddDrift("StartToGL1", length=0.25)
+        self.line.AddGaborLens("GL1", length=0.857, b=1.400, aper1=0.1)
+        self.line.AddDrift("GL1ToGL2", length=0.3)
+        self.line.AddGaborLens("GL2", length=0.857, b=0.579, aper1=0.1)
+        self.line.AddDrift("GL2ToGL3", length=1.9455)
+        self.line.AddGaborLens("GL3", length=0.857, b=0.817, aper1=0.1)
+        self.line.AddDrift("GL3ToGL4", length=2.8456)
+        self.line.AddGaborLens("GL4", length=0.857, b=params[0], aper1=0.1)
+        self.line.AddDrift("GL4ToGL5", length=0.8)
+        self.line.AddGaborLens("GL5", length=0.857, b=params[1], aper1=0.1)
+        self.line.AddDrift("GL5ToGL6", length=3.2)
+        self.line.AddGaborLens("GL6", length=0.857, b=params[2], aper1=0.1)
+        self.line.AddDrift("GL6ToGL7", length=0.8)
+        self.line.AddGaborLens("GL7", length=0.857, b=params[3], aper1=0.1)
+        self.line.AddDrift("GL7ToARC", length=2.27)
+
+        self.line.Write(f"{self.model_dir}/S1GL_{fname}.gmad")

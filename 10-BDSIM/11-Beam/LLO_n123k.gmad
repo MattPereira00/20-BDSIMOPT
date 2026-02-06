@@ -1,0 +1,7 @@
+beam, particle="proton",
+      kineticEnergy=15*MeV,
+      distrType = "userfile",
+      distrFile = "../11-Beams/LLO_n123k.txt",
+      distrFileFormat = "x[m]:y[m]:z[m]:xp[rad]:yp[rad]:E[MeV]:t[s]";
+
+option, ngenerate=123000;
