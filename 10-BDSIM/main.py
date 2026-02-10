@@ -140,11 +140,15 @@ if __name__ == "__main__":
         "b6": (0.0, 1.4),
         "b7": (0.0, 1.4),
     }
-    targets_3cm = {"sigma_x": 7.5e-3, "sigma_y": 7.5e-3, "sigma_xp": 0.0, "sigma_yp": 0.0}
+    targets_3cm = {"sigma_x": 7.5e-3, "sigma_y": 7.5e-3, "alpha_x": 0, "alpha_y": 0}
+    constraints = {
+        "alpha_x_err_max": 10.0,
+        "alpha_y_err_max": 10.0,
+    }
 
     config = OptConfig(
-        objectives=["sigma_x", "sigma_y", "sigma_xp", "sigma_yp"],
-        constraints={},
+        objectives=["sigma_x", "sigma_y", "alpha_x", "alpha_y"],
+        constraints=constraints,
         bounds=GLbounds,
         n_initial=20,
         n_iter=20,
@@ -152,8 +156,9 @@ if __name__ == "__main__":
     )
     model = S1GLModel(Builder)
     problem = S1GLProblem(model, config, targets_3cm)
-    mobo = BDSIMMoBO(problem, "MOBO_S1GL_20_20_4")
+    mobo = BDSIMMoBO(problem, "MOBO_S1GL_20_20_4_const")
     mobo.optimise()
+    mobo.plot_pareto()
 
     end = time.time()
     print("Time Taken: ", (end - start)/60, "mins")

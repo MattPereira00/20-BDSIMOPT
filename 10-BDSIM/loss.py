@@ -239,7 +239,7 @@ def extract_optics(outfile):
     output_optics = pybdsim.Data.Load(outfile + "_optics.root").optics
 
     sigma_x, sigma_y = output_optics.Sigma_x()[-1], output_optics.Sigma_y()[-1]
-    sigma_xp, sigma_yp = output_optics.Sigma_xp()[-1], output_optics.Sigma_yp()[-1]
+    #sigma_xp, sigma_yp = output_optics.Sigma_xp()[-1], output_optics.Sigma_yp()[-1]
+    alpha_x, alpha_y = output_optics.Alpha_x()[-1], output_optics.Alpha_y()[-1]
 
-
-    return sigma_x, sigma_y, sigma_xp, sigma_yp
+    return sigma_x, sigma_y, alpha_x, alpha_y

@@ -152,7 +152,7 @@ class BDSIMMoBO:
                 constraints=self.problem.get_constraints(),
             )
 
-            acq.eta = 1e-3
+            #acq.eta = 1e-3
 
             bounds = torch.tensor(
                 list(self.config.bounds.values()),
@@ -230,7 +230,7 @@ class BDSIMMoBO:
 
         ax.set_xlabel(labels[0])
         ax.set_ylabel(labels[1])
-        ax.set_ylabel(labels[2])
+        ax.set_zlabel(labels[2])
         ax.legend()
 
         plt.tight_layout()

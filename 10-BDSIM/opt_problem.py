@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 from typing import Callable, List, Dict
 from abc import ABC, abstractmethod
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -290,7 +291,7 @@ class S1GLProblem(OptProblem):
         self.targets = targets
         # e.g. {"sigma_x": 3e-3, "sigma_y": 3e-3}
 
-        self.objective_names = ["sig_x_err", "sig_y_err", "sigma_xp_err", "sigma_yp_err"]
+        self.objective_names = ["sig_x_err", "sig_y_err", "alpha_x_err", "alpha_y_err"]
 
     # ----------------------------
     # Core evaluation
@@ -323,34 +324,65 @@ class S1GLProblem(OptProblem):
         Y = torch.stack(packed, dim=0)
         return Y, raw_results
 
+    # def pack_objectives(self, raw: dict) -> torch.Tensor:
+    #     out = []
+    #     for obj in self.config.objectives:
+    #         val = raw[obj]
+    #
+    #         if isinstance(val, (list, tuple, np.ndarray)):
+    #             raise ValueError(
+    #                 f"Objective '{obj}' is not scalar: got {type(val)} with value {val}"
+    #             )
+    #
+    #         out.append(float(val))
+    #
+    #     return torch.tensor(out, dtype=torch.double, device=self.config.device)
 
     def pack_objectives(self, raw: dict) -> torch.Tensor:
         sigma_x = raw["sigma_x"]
         sigma_y = raw["sigma_y"]
-        sigma_xp = raw["sigma_xp"]
-        sigma_yp = raw["sigma_yp"]
+        alpha_x = raw["alpha_x"]
+        alpha_y = raw["alpha_y"]
 
         obj_x = -abs(sigma_x - self.targets["sigma_x"])
         obj_y = -abs(sigma_y - self.targets["sigma_y"])
-        obj_xp = -abs(sigma_xp - self.targets["sigma_xp"])
-        obj_yp = -abs(sigma_yp - self.targets["sigma_yp"])
+        obj_ax = -abs(alpha_x - self.targets["alpha_x"])
+        obj_ay = -abs(alpha_y - self.targets["alpha_y"])
+
 
         return torch.tensor(
-            [obj_x, obj_y, obj_xp, obj_yp],
+            [obj_x, obj_y, obj_ax, obj_ay],
             dtype=torch.double,
             device=self.config.device,
         )
 
     def get_constraints(self):
-        # No hard constraints by default - needed for template (probably a bad thing)
-        return []
+        constraints = []
+
+        for key, value in self.config.constraints.items():
+            obj, kind = key.rsplit("_", 1)
+
+            idx = self.objective_index(obj)
+
+            if kind == "min":
+                constraints.append(
+                    lambda Y, i=idx, v=value: torch.abs(Y[..., i]) - v
+                )
+            elif kind == "max":
+                constraints.append(
+                    lambda Y, i=idx, v=value: v - torch.abs(Y[..., i])
+                )
+            else:
+                raise ValueError(f"Unknown constraint type '{kind}'")
+
+        return constraints
 
     def format_result(self, x, y, raw):
         return (
             f"sig_x={raw['sigma_x']:.4e}  "
             f"sig_y={raw['sigma_y']:.4e}  "
-            f"sig_x={raw['sigma_xp']:.4e}  "
-            f"sig_y={raw['sigma_yp']:.4e}  "
+            f"alpha_x={raw['alpha_x']:.4e}  "
+            f"alpha_y={raw['alpha_y']:.4e}  "
             f"X={x.cpu().numpy()}"
         )
 
@@ -358,8 +390,8 @@ class S1GLProblem(OptProblem):
         return [
             "sigma_x error",
             "sigma_y error",
-            "sigma_xp error",
-            "sigma_yp error",
+            "alpha_x error",
+            "alpha_y error",
         ]
 
     def fallback_raw(self):
@@ -367,6 +399,6 @@ class S1GLProblem(OptProblem):
         return {
             "sig_x": 1.0,
             "sig_y": 1.0,
-            "sigma_xp": 1.0,
-            "sigma_yp": 1.0,
+            "alpha_x": 1.0,
+            "alpha_y": 1.0,
         }

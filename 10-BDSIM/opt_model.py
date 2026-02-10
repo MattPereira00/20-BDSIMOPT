@@ -172,7 +172,7 @@ class S1GLModel(OptModel):
             "--emittanceOnTheFly"
         ], stdout=open(os.devnull, "wb"))
 
-        sigma_x, sigma_y, sigma_xp, sigma_yp = extract_optics(outfile)
+        sigma_x, sigma_y, alpha_x, alpha_y = extract_optics(outfile)
 
         # Cleanup
         if cleanup:
@@ -184,4 +184,4 @@ class S1GLModel(OptModel):
             os.remove(outfile + ".root")
             os.remove(outfile + "_optics.root")
 
-        return {"sigma_x": sigma_x, "sigma_y": sigma_y, "sigma_xp": sigma_xp, "sigma_yp": sigma_yp}
+        return {"sigma_x": sigma_x, "sigma_y": sigma_y, "alpha_x": alpha_x, "alpha_y": alpha_y}
