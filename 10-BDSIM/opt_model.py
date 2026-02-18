@@ -1,16 +1,16 @@
 from builder import *
-from loss import *
+from opt_obj import *
 import os, subprocess
 
 from abc import ABC, abstractmethod
 import numpy as np
 
 
-def sanitize(T, A, D):
-    if not np.isfinite(T) or not np.isfinite(A) or not np.isfinite(D):
+def sanitize(t, a, d):
+    if not np.isfinite(t) or not np.isfinite(a) or not np.isfinite(d):
         return 0.0, 1.0, 1.0  # worst possible, dominated
 
-    return T, A, D
+    return t, a, d
 
 class OptModel(ABC):
     @abstractmethod
@@ -32,13 +32,13 @@ class TripletModel(OptModel):
         """
         self.builder.build_halbach_triplet(run_id, x)
 
-        modelpath = f"{self.builder.model_dir}/triplet_{run_id}.gmad"
+        model_path = f"{self.builder.model_dir}/triplet_{run_id}.gmad"
         outfile = f"{self.data_dir}/output-{run_id}"
 
         # Run BDSIM (temporary files)
         n_generate = self.builder.Options["ngenerate"]
         pybdsim.Run.Bdsim(
-            gmadpath=modelpath,
+            gmadpath=model_path,
             outfile=outfile,
             batch=True,
             seed=1999,
@@ -50,12 +50,12 @@ class TripletModel(OptModel):
                                stdout=open(os.devnull, 'wb'))
 
         # Extract variables for metrics from RebdsimOptics File
-        T, A, D = extract_metrics_and_uncertainties(outfile)[::2]
-        T, A, D = sanitize(T, A, D)
+        t, a, d = extract_metrics_and_uncertainties(outfile)[::2]
+        t, a, d = sanitize(t, a, d)
 
         # Cleanup
         if cleanup:
-            os.remove(modelpath)
+            os.remove(model_path)
             os.remove(f"{self.builder.model_dir}/triplet_{run_id}_beam.gmad")
             os.remove(f"{self.builder.model_dir}/triplet_{run_id}_components.gmad")
             os.remove(f"{self.builder.model_dir}/triplet_{run_id}_options.gmad")
@@ -63,7 +63,7 @@ class TripletModel(OptModel):
             os.remove(outfile + ".root")
             os.remove(outfile + "_optics.root")
 
-        return {"T": T, "A": A, "D": D}
+        return {"T": t, "A": a, "D": d}
 
 class DoubleTripletModel(OptModel):
     def __init__(self, builder:Builder, frozen_triplet):
@@ -72,15 +72,15 @@ class DoubleTripletModel(OptModel):
         self.data_dir = self.builder.data_dir
         self.fixed = frozen_triplet
 
-    def run(self, X, run_id, cleanup=True):
+    def run(self, x, run_id, cleanup=True):
         """
-        :param X:
+        :param x:
         :param run_id:
         :param cleanup:
         :return: dict of objective values after run
         """
 
-        triplet2 = self.unpack_triplet2(X)
+        triplet2 = self.unpack_triplet2(x)
 
         params = {}
         params.update(self.fixed)
@@ -88,13 +88,13 @@ class DoubleTripletModel(OptModel):
 
         self.builder.build_halbach_double_triplet(run_id, self.pack_params(params))
 
-        modelpath = f"{self.builder.model_dir}/double_triplet_{run_id}.gmad"
+        model_path = f"{self.builder.model_dir}/double_triplet_{run_id}.gmad"
         outfile = f"{self.data_dir}/output-{run_id}"
 
         # Run BDSIM (temporary files)
         n_generate = self.builder.Options["ngenerate"]
         pybdsim.Run.Bdsim(
-            gmadpath=modelpath,
+            gmadpath=model_path,
             outfile=outfile,
             batch=True,
             seed=1999,
@@ -106,12 +106,12 @@ class DoubleTripletModel(OptModel):
                                stdout=open(os.devnull, 'wb'))
 
         # Extract variables for metrics from RebdsimOptics File
-        T, A, D = extract_metrics_and_uncertainties(outfile)[::2]
-        T, A, D = sanitize(T, A, D)
+        t, a, d = extract_metrics_and_uncertainties(outfile)[::2]
+        t, a, d = sanitize(t, a, d)
 
         # Cleanup
         if cleanup:
-            os.remove(modelpath)
+            os.remove(model_path)
             os.remove(f"{self.builder.model_dir}/double_triplet_{run_id}_beam.gmad")
             os.remove(f"{self.builder.model_dir}/double_triplet_{run_id}_components.gmad")
             os.remove(f"{self.builder.model_dir}/double_triplet_{run_id}_options.gmad")
@@ -119,9 +119,10 @@ class DoubleTripletModel(OptModel):
             os.remove(outfile + ".root")
             os.remove(outfile + "_optics.root")
 
-        return {"T": T, "A": A, "D": D}
+        return {"T": t, "A": a, "D": d}
 
-    def unpack_triplet2(self, x):
+    @staticmethod
+    def unpack_triplet2(x):
         return {
             "d4": float(x[0]),
             "d5": float(x[1]),
@@ -134,7 +135,8 @@ class DoubleTripletModel(OptModel):
             "aper6": float(x[8]),
         }
 
-    def pack_params(self, params):
+    @staticmethod
+    def pack_params(params):
         return [
             params["d1"], params["d2"], params["d3"],
             params["q1_L"], params["q2_L"], params["q3_L"],
@@ -150,15 +152,15 @@ class S1GLModel(OptModel):
         self.model_dir = builder.model_dir
         self.data_dir = builder.data_dir
 
-    def run(self, X, run_id, cleanup=True):
+    def run(self, x, run_id, cleanup=True):
         # X = [b4, b5, b6, b7]
-        self.builder.build_s1GL(run_id, X)
+        self.builder.build_s1_gl(run_id, x)
 
-        modelpath = f"{self.model_dir}/S1GL_{run_id}.gmad"
+        model_path = f"{self.model_dir}/S1GL_{run_id}.gmad"
         outfile = f"{self.data_dir}/output-{run_id}"
 
         pybdsim.Run.Bdsim(
-            gmadpath=modelpath,
+            gmadpath=model_path,
             outfile=outfile,
             batch=True,
             silent=True,
@@ -176,7 +178,7 @@ class S1GLModel(OptModel):
 
         # Cleanup
         if cleanup:
-            os.remove(modelpath)
+            os.remove(model_path)
             os.remove(f"{self.builder.model_dir}/S1GL_{run_id}_beam.gmad")
             os.remove(f"{self.builder.model_dir}/S1GL_{run_id}_components.gmad")
             os.remove(f"{self.builder.model_dir}/S1GL_{run_id}_options.gmad")

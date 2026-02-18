@@ -154,7 +154,7 @@ class Builder:
 
         self.line.Write(f"{self.model_dir}/double_triplet_{fname}.gmad")
 
-    def build_s1GL(self, fname, params):
+    def build_s1_gl(self, fname, params):
         self.line = pybdsim.Builder.Machine()
         self.__add_beam()
         self.__add_options()

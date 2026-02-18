@@ -1,5 +1,5 @@
 import torch
-import numpy as np
+from opt_loss import *
 from typing import Callable, List, Dict
 from abc import ABC, abstractmethod
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -13,12 +13,12 @@ class OptProblem(ABC):
         self.last_raw_results = None
 
     @abstractmethod
-    def evaluate(self, X: torch.Tensor) -> torch.Tensor:
+    def evaluate(self, x: torch.Tensor) -> torch.Tensor:
         """
         Run the model
 
-        :param X: torch.Tensor
-        :return Y: torch.Tensor
+        :param x: torch.Tensor
+        :return y: torch.Tensor
         """
         pass
 
@@ -28,7 +28,7 @@ class OptProblem(ABC):
         Convert raw physical outputs into a BoTorch objective vector.
 
         Returns:
-            torch.Tensor shape (n_objectives,)
+            torch.Tensor shape (n_objectives)
         """
         pass
 
@@ -48,20 +48,19 @@ class OptProblem(ABC):
         """
         pass
 
-    def get_feasible_mask(self, Y: torch.Tensor) -> torch.Tensor:
+    def get_feasible_mask(self, y: torch.Tensor) -> torch.Tensor:
         """
-        Returns a boolean mask of shape (N,)
+        Returns a boolean mask of shape (n)
         """
-        N = Y.shape[0]
+        n = y.shape[0]
 
         if not self.get_constraints():
-            return torch.ones(N, dtype=torch.bool, device=Y.device)
+            return torch.ones(n, dtype=torch.bool, device=y.device)
 
-        feasible = torch.ones(N, dtype=torch.bool, device=Y.device)
+        feasible = torch.ones(n, dtype=torch.bool, device=y.device)
 
         for c in self.get_constraints():
-            # c(Y) MUST return shape (N,)
-            val = c(Y)
+            val = c(y)
 
             if val.ndim != 1:
                 val = val.view(-1)
@@ -102,9 +101,9 @@ class TripletCapture(OptProblem):
             "A": -1,
             "D": -1,
         }
-    def evaluate(self, X: torch.Tensor):
-        X_np = X.detach().cpu().numpy()
-        n = X_np.shape[0]
+    def evaluate(self, x: torch.Tensor):
+        x_np = x.detach().cpu().numpy()
+        n = x_np.shape[0]
         raw_results = [None] * n
         packed_results = [None] * n
 
@@ -113,7 +112,7 @@ class TripletCapture(OptProblem):
             for i in range(n):
                 run_id = self.run_id
                 self.run_id += 1
-                futures[pool.submit(self.model.run, X_np[i], run_id)] = i
+                futures[pool.submit(self.model.run, x_np[i], run_id)] = i
 
             for fut in as_completed(futures):
                 i = futures[fut]
@@ -127,8 +126,8 @@ class TripletCapture(OptProblem):
                     raw_results[i] = fallback  # ← ADD THIS
                     packed_results[i] = self.pack_objectives(fallback)
 
-            Y = torch.stack(packed_results, dim=0)
-            return Y, raw_results
+            y = torch.stack(packed_results, dim=0)
+            return y, raw_results
 
     def get_constraints(self):
         constraints = []
@@ -141,31 +140,31 @@ class TripletCapture(OptProblem):
 
             if kind == "min":
                 constraints.append(
-                    lambda Y, i=idx, s=sign, v=value: s * Y[..., i] - v
+                    lambda y, i=idx, s=sign, v=value: s * y[..., i] - v
                 )
             elif kind == "max":
                 constraints.append(
-                    lambda Y, i=idx, s=sign, v=value: v - s * Y[..., i]
+                    lambda y, i=idx, s=sign, v=value: v - s * y[..., i]
                 )
             else:
                 raise ValueError(f"Unknown constraint type '{kind}'")
 
         return constraints
 
-    def get_feasible_mask(self, Y: torch.Tensor) -> torch.Tensor:
+    def get_feasible_mask(self, y: torch.Tensor) -> torch.Tensor:
         """
-        Returns a boolean mask of shape (N,)
+        Returns a boolean mask of shape (n)
         True if all constraints are satisfied.
         """
-        N = Y.shape[0]
+        n = y.shape[0]
 
         if not self.get_constraints():
-            return torch.ones(N, dtype=torch.bool, device=Y.device)
+            return torch.ones(n, dtype=torch.bool, device=y.device)
 
-        feasible = torch.ones(N, dtype=torch.bool, device=Y.device)
+        feasible = torch.ones(n, dtype=torch.bool, device=y.device)
 
         for c in self.get_constraints():
-            val = c(Y)
+            val = c(y)
             if val.ndim != 1:
                 val = val.view(-1)
             feasible &= (val >= 0)
@@ -204,16 +203,16 @@ class DoubleTripletProblem(OptProblem):
             "D": -1,
         }
 
-    def evaluate(self, X: torch.Tensor):
-        X_np = X.detach().cpu().numpy()
-        n = X_np.shape[0]
+    def evaluate(self, x: torch.Tensor):
+        x_np = x.detach().cpu().numpy()
+        n = x_np.shape[0]
 
         raw_results = [None] * n
         packed = [None] * n
 
         with ProcessPoolExecutor(max_workers=self.config.batch_size) as pool:
             futures = {
-                pool.submit(self.model.run, X_np[i], self.run_id + i): i
+                pool.submit(self.model.run, x_np[i], self.run_id + i): i
                 for i in range(n)
             }
             self.run_id += n
@@ -230,8 +229,8 @@ class DoubleTripletProblem(OptProblem):
                     raw_results[i] = fallback
                     packed[i] = self.pack_objectives(fallback)
 
-        Y = torch.stack(packed, dim=0)
-        return Y, raw_results
+        y = torch.stack(packed, dim=0)
+        return y, raw_results
 
     def pack_objectives(self, raw: dict) -> torch.Tensor:
         out = []
@@ -254,16 +253,14 @@ class DoubleTripletProblem(OptProblem):
 
             if kind == "min":
                 constraints.append(
-                    lambda Y, i=idx, s=sign, v=value: s * Y[..., i] - v
+                    lambda y, i=idx, s=sign, v=value: s * y[..., i] - v
                 )
             elif kind == "max":
                 constraints.append(
-                    lambda Y, i=idx, s=sign, v=value: v - s * Y[..., i]
+                    lambda y, i=idx, s=sign, v=value: v - s * y[..., i]
                 )
             else:
                 raise ValueError(f"Unknown constraint type '{kind}'")
-
-        return constraints
 
         return constraints
 
@@ -293,19 +290,16 @@ class S1GLProblem(OptProblem):
 
         self.objective_names = ["sig_x_err", "sig_y_err", "alpha_x_err", "alpha_y_err"]
 
-    # ----------------------------
-    # Core evaluation
-    # ----------------------------
-    def evaluate(self, X: torch.Tensor):
-        X_np = X.detach().cpu().numpy()
-        n = X_np.shape[0]
+    def evaluate(self, x: torch.Tensor):
+        x_np = x.detach().cpu().numpy()
+        n = x_np.shape[0]
 
         raw_results = [None] * n
         packed = [None] * n
 
         with ProcessPoolExecutor(max_workers=self.config.batch_size) as pool:
             futures = {
-                pool.submit(self.model.run, X_np[i], self.run_id + i): i
+                pool.submit(self.model.run, x_np[i], self.run_id + i): i
                 for i in range(n)
             }
             self.run_id += n
@@ -321,22 +315,8 @@ class S1GLProblem(OptProblem):
                 raw_results[i] = raw
                 packed[i] = self.pack_objectives(raw)
 
-        Y = torch.stack(packed, dim=0)
-        return Y, raw_results
-
-    # def pack_objectives(self, raw: dict) -> torch.Tensor:
-    #     out = []
-    #     for obj in self.config.objectives:
-    #         val = raw[obj]
-    #
-    #         if isinstance(val, (list, tuple, np.ndarray)):
-    #             raise ValueError(
-    #                 f"Objective '{obj}' is not scalar: got {type(val)} with value {val}"
-    #             )
-    #
-    #         out.append(float(val))
-    #
-    #     return torch.tensor(out, dtype=torch.double, device=self.config.device)
+        y = torch.stack(packed, dim=0)
+        return y, raw_results
 
     def pack_objectives(self, raw: dict) -> torch.Tensor:
         sigma_x = raw["sigma_x"]
@@ -366,11 +346,11 @@ class S1GLProblem(OptProblem):
 
             if kind == "min":
                 constraints.append(
-                    lambda Y, i=idx, v=value: torch.abs(Y[..., i]) - v
+                    lambda y, i=idx, v=value: torch.abs(y[..., i]) - v
                 )
             elif kind == "max":
                 constraints.append(
-                    lambda Y, i=idx, v=value: v - torch.abs(Y[..., i])
+                    lambda y, i=idx, v=value: v - torch.abs(y[..., i])
                 )
             else:
                 raise ValueError(f"Unknown constraint type '{kind}'")
@@ -393,8 +373,8 @@ class S1GLProblem(OptProblem):
             "alpha_x error",
             "alpha_y error",
         ]
-
-    def fallback_raw(self):
+    @staticmethod
+    def fallback_raw():
         # Very bad optics
         return {
             "sig_x": 1.0,
@@ -402,3 +382,70 @@ class S1GLProblem(OptProblem):
             "alpha_x": 1.0,
             "alpha_y": 1.0,
         }
+
+class OpticsMatchProblem(OptProblem):
+    def __init__(self, model, config: OptConfig, targets: dict, weights: dict | None = None, scales: dict | None = None):
+        super().__init__(model, config)
+        self.targets = targets
+        self.scales = scales if scales is not None else {k: 1.0 for k in targets}
+        self.loss_fn = make_weighted_target_loss(self.targets, weights, scales)
+        self.objective_names = ["loss"]
+
+    def get_constraints(self):
+        return [] # No constraints for optics matching (probably bad this is in the template)
+
+    def get_ref_point(self) -> torch.Tensor:
+        # Worst possible optics match: very large loss
+        return torch.tensor([1e6], dtype=torch.double, device=self.config.device)
+
+    def objective_labels(self):
+        return ["Weighted Optics Loss"]
+
+    def pack_objectives(self, raw: dict) -> torch.Tensor:
+        loss = self.loss_fn(raw)
+        return torch.tensor([loss], dtype=torch.double, device=self.config.device)
+
+    def format_result(self, x, y, raw):
+        if raw is None:
+            return f"loss={y.item():.3e}  X={x.cpu().numpy()}"
+
+        metric_str = "  ".join(
+            f"{k}={raw[k]:.3e} (tgt={self.targets[k]:.3e})"
+            for k in self.targets
+            if k in raw
+        )
+
+        return f"loss={y.item():.3e} {metric_str} X={x.cpu().numpy()}"
+
+
+    def evaluate(self, x: torch.Tensor):
+        x_np = x.detach().cpu().numpy()
+        n = x_np.shape[0]
+
+        raw_results = [None] * n
+        y = torch.zeros((n, 1), dtype=torch.double, device=self.config.device)
+
+        with ProcessPoolExecutor(max_workers=self.config.batch_size) as pool:
+            futures = {
+                pool.submit(self.model.run, x_np[i], self.run_id + i): i
+                for i in range(n)
+            }
+            self.run_id += n
+
+            for fut in as_completed(futures):
+                i = futures[fut]
+                try:
+                    metrics = fut.result()
+                    raw_results[i] = metrics
+
+                    loss = self.loss_fn(metrics)
+                    loss = min(loss, 1e6)
+
+                    y[i, 0] = float(loss)
+
+                except Exception as e:
+                    print(f"[Worker {i}] ERROR:", e)
+                    raw_results[i] = None
+                    y[i, 0] = 1e6  # hard penalty
+
+        return y, raw_results

@@ -1,5 +1,5 @@
 import os, subprocess
-from loss import *
+from opt_obj import extract_metrics_and_uncertainties
 import pybdsim
 
 modelDir = "10-Model"

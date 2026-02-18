@@ -3,11 +3,12 @@ from typing import List, Dict
 
 @dataclass
 class OptConfig:
-    objectives: List[str]             # ["T", "A", "D"]
-    constraints: Dict[str, float]     # {"T_min": 0.01} {"D_max": 0.03}
-    bounds: Dict[str, tuple]          # {"k1": (0,1), "ap1": (0.02,0.06), ...}
+    objectives: List[str]
+    constraints: Dict[str, float]
+    bounds: Dict[str, tuple]
     n_initial: int
     n_iter: int
     batch_size: int
     mc_samples: int = 64
+    mode: str = 'mobo' # 'mobo' or 'scalar'
     device: str = 'cpu'

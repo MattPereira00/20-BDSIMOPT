@@ -1,9 +1,9 @@
-import pybdsim.Run
-
-from bdsim_mobo import *
+from opt_problem import *
+from opt_model import *
+from bdsim_opt import BDSIMOpt
 
 import time
-import sys
+
 Beam = pybdsim.Beam.Beam()
 Beam.SetParticleType("proton")
 Beam.SetEnergy(953.27231, "MeV")
@@ -14,7 +14,7 @@ Beam._SetDistrFile("../11-Beam/LLO_n123k.txt")
 Beam._SetDistrFileFormat("x[m]:y[m]:z[m]:xp[rad]:yp[rad]:E[MeV]:t[s]")
 
 Options = pybdsim.Options.Options()
-Options.SetBeamPipeRadius(10, "mm")
+Options.SetBeamPipeRadius(10, "cm")
 Options.SetBeamPipeThickness(5, "mm")
 Options.SetIntegratorSet(integratorSet='"geant4"')
 Options.SetSamplerDiameter(0.1, "m")
@@ -134,31 +134,63 @@ if __name__ == "__main__":
     #                          outputfilename=f"{Builder.data_dir}/S1GL_S1GL1Test_optics.pdf",
     #                          survey=f"{Builder.data_dir}/S1GL_S1GL1Test.root")
 
-    GLbounds = {
-        "b4": (0.0, 1.4),
-        "b5": (0.0, 1.4),
-        "b6": (0.0, 1.4),
-        "b7": (0.0, 1.4),
+
+    # bounds_3cm = {
+    #     "b4": (1.2, 1.35),
+    #     "b5": (0.55, 0.7),
+    #     "b6": (0.6, 0.8),
+    #     "b7": (0.25, 0.45),
+    # }
+
+    bounds_2_5cm = {
+        "b4": (1.2, 1.3),
+        "b5": (0.6, 0.65),
+        "b6": (0.8, 0.85),
+        "b7": (0.225, 0.275),
     }
-    targets_3cm = {"sigma_x": 7.5e-3, "sigma_y": 7.5e-3, "alpha_x": 0, "alpha_y": 0}
-    constraints = {
-        "alpha_x_err_max": 10.0,
-        "alpha_y_err_max": 10.0,
+
+    bounds_2cm = {
+        "b4": (1.0, 1.3),
+        "b5": (0.5, 0.9),
+        "b6": (0.7, 1.1),
+        "b7": (0.1, 0.5),
+    }
+
+    targets = {
+        "sigma_x": 5e-3,
+        # "sigma_y": 7.5e-3,
+        "alpha_x": 0.0,
+        # "alpha_y": 0.0,
+    }
+
+    weights = {
+        "sigma_x": 2.0,
+        #"sigma_y": 1.0,
+        "alpha_x": 1.0,
+        #"alpha_y": 1.0,
+    }
+
+    scales = {
+        "sigma_x": 0.5e-4,
+        #"sigma_y": 1.5e-4,
+        "alpha_x": 1e-1,
+        #"alpha_y": 3.0,
     }
 
     config = OptConfig(
-        objectives=["sigma_x", "sigma_y", "alpha_x", "alpha_y"],
-        constraints=constraints,
-        bounds=GLbounds,
-        n_initial=20,
-        n_iter=20,
+        objectives=["sigma_x", "alpha_x"],
+        constraints={},
+        bounds=bounds_2cm,
+        n_initial=24,
+        n_iter=40,
         batch_size=4,
+        mode = "scalar",
     )
     model = S1GLModel(Builder)
-    problem = S1GLProblem(model, config, targets_3cm)
-    mobo = BDSIMMoBO(problem, "MOBO_S1GL_20_20_4_const")
+    problem = OpticsMatchProblem(model, config, targets, weights=weights, scales=scales)
+    mobo = BDSIMOpt(problem, "SOBO_S1GL_24_40_4_2cm_scales")
     mobo.optimise()
-    mobo.plot_pareto()
+    mobo.plot_results()
 
     end = time.time()
     print("Time Taken: ", (end - start)/60, "mins")
