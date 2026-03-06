@@ -129,9 +129,7 @@ def extract_metrics_and_uncertainties(outfile):
         variances.get("var_Nin", 0),
         variances.get("var_Nout", 0),
     ])
-    # ============================================================
     #  METRIC 1: TRANSMISSION  T = Nout / Nin
-    # ============================================================
     n_in_val, n_out_val = n_parts_in, n_parts_out
     t = n_out_val / n_in_val
 
@@ -143,10 +141,8 @@ def extract_metrics_and_uncertainties(outfile):
     var_t = j_t @ c @ j_t.T
     sigma_t = np.sqrt(max(var_t, 0))
 
-    # ============================================================
-    #  ASYMMETRY  A = Aσ + Aσ' + Aε
-    # ============================================================
 
+    #  ASYMMETRY  A = Asigma + Asigmap + Aemitt
     def asym_and_derivs(x, y):
         """Returns asymmetry component and analytic jacobian entries."""
         d = x + y if abs(x + y) > 1e-12 else 1e-12

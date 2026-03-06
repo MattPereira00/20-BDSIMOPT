@@ -24,18 +24,11 @@ class TripletModel(OptModel):
         self.data_dir = self.builder.data_dir
 
     def run(self, x, run_id, cleanup=True):
-        """
-        :param x:
-        :param run_id:
-        :param cleanup:
-        :return: dict of objective values after run
-        """
         self.builder.build_halbach_triplet(run_id, x)
 
         model_path = f"{self.builder.model_dir}/triplet_{run_id}.gmad"
         outfile = f"{self.data_dir}/output-{run_id}"
 
-        # Run BDSIM (temporary files)
         n_generate = self.builder.Options["ngenerate"]
         pybdsim.Run.Bdsim(
             gmadpath=model_path,
