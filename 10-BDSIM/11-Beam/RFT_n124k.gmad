@@ -1,0 +1,7 @@
+beam, particle="proton",
+      kineticEnergy=15*MeV,
+      distrType = "userfile",
+      distrFile = "../11-Beams/RFT_n124k.dat",
+      distrFileFormat = "x[m]:y[m]:S[m]:xp[rad]:yp[rad]:E[MeV]";
+
+option, ngenerate=124325;
