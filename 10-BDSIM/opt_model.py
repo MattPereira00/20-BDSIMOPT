@@ -156,6 +156,7 @@ class S1GLModel(OptModel):
             gmadpath=model_path,
             outfile=outfile,
             batch=True,
+            seed=1999,
             silent=True,
             ngenerate=self.builder.Options["ngenerate"],
         )
@@ -180,3 +181,39 @@ class S1GLModel(OptModel):
             os.remove(outfile + "_optics.root")
 
         return {"sigma_x": sigma_x, "sigma_y": sigma_y, "alpha_x": alpha_x, "alpha_y": alpha_y}
+
+class S1ColModel(OptModel):
+    def __init__(self, builder:Builder):
+        self.builder = builder
+        self.model_dir = self.builder.model_dir
+        self.data_dir = self.builder.data_dir
+
+    def run(self, x, run_id, cleanup=True):
+        self.builder.build_s1_col1(run_id, x)
+
+        model_path = f"{self.builder.model_dir}/S1_COL1_{run_id}.gmad"
+        outfile = f"{self.data_dir}/output-{run_id}"
+
+        n_generate = self.builder.Options["ngenerate"]
+        pybdsim.Run.Bdsim(
+            gmadpath=model_path,
+            outfile=outfile,
+            batch=True,
+            seed=1999,
+            silent=True,
+            ngenerate=n_generate,
+        )
+
+        # Extract variables for metrics from root file
+        nominal_survival_fraction = extract_nominal_survival_fraction(f"{outfile}.root")
+
+        # Cleanup
+        if cleanup:
+            os.remove(model_path)
+            os.remove(f"{self.builder.model_dir}/S1_COL1_{run_id}_beam.gmad")
+            os.remove(f"{self.builder.model_dir}/S1_COL1_{run_id}_components.gmad")
+            os.remove(f"{self.builder.model_dir}/S1_COL1_{run_id}_options.gmad")
+            os.remove(f"{self.builder.model_dir}/S1_COL1_{run_id}_sequence.gmad")
+            os.remove(outfile + ".root")
+
+        return {"nominal_survival_fraction": nominal_survival_fraction}

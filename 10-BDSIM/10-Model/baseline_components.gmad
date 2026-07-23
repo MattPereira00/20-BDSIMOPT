@@ -1,7 +1,0 @@
-! Tue, 09 Sep 2025 13:00:47 +0000
-! pybdsim.Builder Lattice, using pybdsim version 3.6.2.dev81+ga62931a 
-! COMPONENT DEFINITION
-
-LHA_TR_VAC_DRI_00: gap, l=0.05;
-LHA_TR_FINAL_APER: ecol, l=1e-06, material="Cu", xsize=0.01, ysize=0.01;
-LHA_TR_DIA_NOZZLE: ecol, l=0.05, material="Cu", xsize=0.002, xsizeOut=0.00287, ysize=0.002, ysizeOut=0.00287;

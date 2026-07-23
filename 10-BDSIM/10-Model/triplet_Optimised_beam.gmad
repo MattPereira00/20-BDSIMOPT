@@ -1,9 +1,0 @@
-! Mon, 01 Dec 2025 14:42:12 +0000
-! pybdsim.Builder Lattice, using pybdsim version 3.6.2.dev81+ga62931a 
-! BEAM DEFINITION
-
-beam,	distrFile="../11-Beam/LhARA_0cm_pm2-100k.dat",
-	distrFileFormat="x[m]:y[m]:t[ns]:xp[rad]:yp[rad]:E[MeV]", 
-	distrType="userfile", 
-	energy=953.27231*MeV, 
-	particle="proton";

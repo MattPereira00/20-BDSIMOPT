@@ -1,8 +1,0 @@
-! Tue, 09 Sep 2025 13:00:47 +0000
-! pybdsim.Builder Lattice, using pybdsim version 3.6.2.dev81+ga62931a 
-! LATTICE SEQUENCE DEFINITION
-
-l0: line = (LHA_TR_VAC_DRI_00, LHA_TR_DIA_NOZZLE);
-l1: line = (LHA_TR_VAC_DRI_00, LHA_TR_FINAL_APER);
-lattice: line = (l0);
-use, period=lattice;
