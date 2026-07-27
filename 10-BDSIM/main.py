@@ -24,7 +24,7 @@ Options.SetIncludeFringeFields(on=True)
 #Options.SetPhysicsList("g4QGSP_BIC_EMZ")
 #Options.SetStopSecondaries(stop=True)
 Options.SetGeneralOption("collimatorsAreInfiniteAbsorbers", 1)
-Options.SetNGenerate(10000)
+Options.SetNGenerate(40000)
 
 
 if __name__ == "__main__":
@@ -394,18 +394,42 @@ if __name__ == "__main__":
     # mobo.plot_results()
     # mobo.refine_pareto_front(ngenerate=124264)
 
+    # config = OptConfig(
+    #     objectives=["sigma_x_err", "alpha_x_err"],
+    #     constraints={},
+    #     bounds=bounds_zoom_alt2,
+    #     n_initial=40,
+    #     n_iter=40,
+    #     batch_size=5,
+    #     mode = "mobo",
+    # )
+    # model = S1GLModel(Builder)
+    # problem = S1GLMatchMOBO(model, config, targets, scales=scales)
+    # mobo = BDSIMOpt(problem, "MOBO_S1GL_40_40_5_ZoomAlt2_CutBeam_SigmaAlphaPareto")
+    # mobo.optimise()
+    # mobo.plot_results()
+    # mobo.refine_pareto_front(ngenerate=124264)
+
+    # Mac Studio run (12 cores): batch_size raised to 10 to use the extra
+    # cores, and ngenerate raised from 10k to 40k (top of file) to bring the
+    # search's own shot noise down from ~53um to ~26um, closer to the 10um
+    # target tolerance, without paying full-beam (124k) cost on every single
+    # evaluation. Back to the wide box (bounds_3cm) rather than continuing to
+    # zoom zoom_alt2, to get a cleaner look at the whole space now that the
+    # search itself is less noisy - if it lands back in the same basin as
+    # zoom_alt2 that's a good confirmation; if not, worth knowing.
     config = OptConfig(
         objectives=["sigma_x_err", "alpha_x_err"],
         constraints={},
-        bounds=bounds_zoom_alt2,
+        bounds=bounds_3cm,
         n_initial=40,
         n_iter=40,
-        batch_size=5,
+        batch_size=10,
         mode = "mobo",
     )
     model = S1GLModel(Builder)
     problem = S1GLMatchMOBO(model, config, targets, scales=scales)
-    mobo = BDSIMOpt(problem, "MOBO_S1GL_40_40_5_ZoomAlt2_CutBeam_SigmaAlphaPareto")
+    mobo = BDSIMOpt(problem, "MOBO_S1GL_40_40_10_3cm_CutBeam_N40k_SigmaAlphaPareto")
     mobo.optimise()
     mobo.plot_results()
     mobo.refine_pareto_front(ngenerate=124264)
