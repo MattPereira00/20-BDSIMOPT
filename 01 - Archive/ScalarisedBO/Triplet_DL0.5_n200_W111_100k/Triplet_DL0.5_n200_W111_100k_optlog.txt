@@ -1,3 +1,0 @@
---- Bayesian Optimization Run (triplet) ---
-Max drift length: 0.5, n_calls: 200
-

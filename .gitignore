@@ -10,6 +10,7 @@ __pycache__/
 *.root
 *.dat
 *.csv
+01 - Archive/
 10-BDSIM/10-Model/
 10-BDSIM/90-BDSIMData/
 99-Scratch/
