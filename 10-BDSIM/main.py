@@ -24,7 +24,7 @@ Options.SetIncludeFringeFields(on=True)
 #Options.SetPhysicsList("g4QGSP_BIC_EMZ")
 #Options.SetStopSecondaries(stop=True)
 Options.SetGeneralOption("collimatorsAreInfiniteAbsorbers", 1)
-Options.SetNGenerate(40000)
+Options.SetNGenerate(124262)
 
 
 if __name__ == "__main__":
@@ -418,19 +418,195 @@ if __name__ == "__main__":
     # zoom zoom_alt2, to get a cleaner look at the whole space now that the
     # search itself is less noisy - if it lands back in the same basin as
     # zoom_alt2 that's a good confirmation; if not, worth knowing.
+    # config = OptConfig(
+    #     objectives=["sigma_x_err", "alpha_x_err"],
+    #     constraints={},
+    #     bounds=bounds_3cm,
+    #     n_initial=40,
+    #     n_iter=40,
+    #     batch_size=10,
+    #     mode = "mobo",
+    # )
+    # model = S1GLModel(Builder)
+    # problem = S1GLMatchMOBO(model, config, targets, scales=scales)
+    # mobo = BDSIMOpt(problem, "MOBO_S1GL_40_40_10_3cm_CutBeam_N40k_SigmaAlphaPareto")
+    # mobo.optimise()
+    # mobo.plot_results()
+    # mobo.refine_pareto_front(ngenerate=124264)  # BUG: should be 124227 (see recover_refine.py)
+
+    # Zoom (with the same batch_size=10/ngenerate=40000 settings) around the
+    # best point found in the N40k wide box, X=[0.709, 0.891, 0.440, 0.868]
+    # (combined error 6.03 - sigma much better than before at this stat level,
+    # alpha worse; same trade-off curve, different point on it).
+    # bounds_zoom_n40k = {
+    #     "b4": (0.532, 0.887),
+    #     "b5": (0.668, 1.114),
+    #     "b6": (0.330, 0.550),
+    #     "b7": (0.651, 1.085),
+    # }
+    # config = OptConfig(
+    #     objectives=["sigma_x_err", "alpha_x_err"],
+    #     constraints={},
+    #     bounds=bounds_zoom_n40k,
+    #     n_initial=40,
+    #     n_iter=40,
+    #     batch_size=10,
+    #     mode = "mobo",
+    # )
+    # model = S1GLModel(Builder)
+    # problem = S1GLMatchMOBO(model, config, targets, scales=scales)
+    # mobo = BDSIMOpt(problem, "MOBO_S1GL_40_40_10_ZoomN40k_CutBeam_SigmaAlphaPareto")
+    # mobo.optimise()
+    # mobo.plot_results()
+    # mobo.refine_pareto_front(ngenerate=124262)
+    # Result: converged back to the same point the zoom was centred on
+    # (X=[0.7095, 0.891, 0.44, 0.868], combined error 6.05 - statistically the
+    # same as the 6.03 that point already scored). No improvement from 40 more
+    # iterations concentrated on this neighbourhood.
+
+    # Sensitivity scan: every search region tried so far (zoom, zoom2, zoom3,
+    # alt, alt2, wide box, this last zoom) has produced the same *shape* of
+    # sigma/alpha trade-off - a 1D curve, not a 2D region of good solutions -
+    # even though there are 4 free lenses (b4-b7) for only 2 targets. That
+    # points at two of the lenses not moving sigma_x/alpha_x independently at
+    # this location. To check directly (rather than spending another BO
+    # round): hold 3 of the 4 lenses fixed at the current best point and
+    # sweep the 4th across its zoom window, one lens at a time. If sigma_x and
+    # alpha_x move independently along some axis, that's real search room left
+    # to exploit; if they move in lockstep along every axis, it's a genuine
+    # optics constraint at this location, not a search/noise artifact.
+    # X0 = {"b4": 0.7095, "b5": 0.891, "b6": 0.44, "b7": 0.868}
+    # sweep_windows = {
+    #     "b4": (0.532, 0.887),
+    #     "b5": (0.668, 1.114),
+    #     "b6": (0.330, 0.550),
+    #     "b7": (0.651, 1.085),
+    # }
+    #
+    # points = {}  # dedup key -> (param, frac, X list)
+    # for param, (lo, hi) in sweep_windows.items():
+    #     half = (hi - lo) / 2
+    #     centre = X0[param]
+    #     for frac in (-1.0, -0.5, 0.0, 0.5, 1.0):
+    #         x = dict(X0)
+    #         x[param] = centre + frac * half
+    #         key = tuple(round(x[p], 6) for p in ("b4", "b5", "b6", "b7"))
+    #         if key not in points:
+    #             points[key] = (param, frac, [x["b4"], x["b5"], x["b6"], x["b7"]])
+    #
+    # model = S1GLModel(Builder)
+    # run_ids = list(points.keys())
+    # results = {}
+    # with ProcessPoolExecutor(max_workers=min(len(run_ids), 12)) as pool:
+    #     futures = {
+    #         pool.submit(model.run, np.array(points[k][2]), f"sens_{i}"): k
+    #         for i, k in enumerate(run_ids)
+    #     }
+    #     for fut in as_completed(futures):
+    #         k = futures[fut]
+    #         results[k] = fut.result()
+    #
+    # for param in sweep_windows:
+    #     print(f"\n--- Sweeping {param} (others fixed at best point) ---")
+    #     rows = sorted(
+    #         (points[k][1], points[k][2], results[k])
+    #         for k in points if points[k][0] == param
+    #     )
+    #     for frac, x, r in rows:
+    #         xr = [round(v, 4) for v in x]
+    #         print(f"  frac={frac:+.2f}  X={xr}  "
+    #               f"sigma_x={r['sigma_x']*1e3:.4f}mm  alpha_x={r['alpha_x']:.4f}")
+    # Result: the four lenses have very different alpha/sigma sensitivity
+    # ratios (b4=-2.35, b5=-39.0, b6=-0.14, b7=-0.77 alpha-units per mm) -
+    # not locked together. b5 is close to a pure alpha knob (weak sigma
+    # effect, huge alpha effect); b7 is close to a pure sigma knob. Since the
+    # two gradients aren't parallel, a small *combined* move (not a single
+    # axis) should be able to hit both targets - solving the local 2x4 linear
+    # system for the step from here to sigma=7.5mm/alpha=0 gives a tiny
+    # predicted correction: b4 0.7095->0.7123, b5 0.891->0.9105,
+    # b6 0.44->0.4396 (negligible), b7 0.868->0.8634. Small enough that no
+    # single-axis sweep or wide BO search would land on it by chance.
+
+    # Local polish grid around the predicted joint-correction point, to
+    # verify the linear prediction and absorb any residual nonlinearity.
+    # 3 levels each of b4, b5, b7 (b6 fixed - its measured effect on both
+    # sigma and alpha was negligible in the sweep above).
+    # grid_b4 = [0.7023, 0.7123, 0.7223]
+    # grid_b5 = [0.8905, 0.9105, 0.9305]
+    # grid_b7 = [0.8534, 0.8634, 0.8734]
+    # b6_fixed = 0.4396
+    #
+    # points = {}
+    # i = 0
+    # for b4 in grid_b4:
+    #     for b5 in grid_b5:
+    #         for b7 in grid_b7:
+    #             points[i] = [b4, b5, b6_fixed, b7]
+    #             i += 1
+    #
+    # model = S1GLModel(Builder)
+    # results = {}
+    # with ProcessPoolExecutor(max_workers=12) as pool:
+    #     futures = {
+    #         pool.submit(model.run, np.array(x), f"polish_{k}"): k
+    #         for k, x in points.items()
+    #     }
+    #     for fut in as_completed(futures):
+    #         k = futures[fut]
+    #         results[k] = fut.result()
+    #
+    # target_sigma, target_alpha = 7.5e-3, 0.0
+    # tol_sigma, tol_alpha = 1e-5, 0.15
+    # rows = []
+    # for k, x in points.items():
+    #     r = results[k]
+    #     sigma_units = abs(r["sigma_x"] - target_sigma) / tol_sigma
+    #     alpha_units = abs(r["alpha_x"] - target_alpha) / tol_alpha
+    #     combined = (sigma_units**2 + alpha_units**2) ** 0.5
+    #     rows.append((combined, x, r["sigma_x"], r["alpha_x"]))
+    #
+    # rows.sort(key=lambda row: row[0])
+    # for combined, x, sigma_x, alpha_x in rows:
+    #     print(f"X={[round(v,4) for v in x]}  sigma_x={sigma_x*1e3:.4f}mm  "
+    #           f"alpha_x={alpha_x:.4f}  combined={combined:.2f}")
+    # Result: best at 40k stats was X=[0.7123,...] (combined=1.78), but a
+    # 4-point high-stat (ngenerate=124262) verification of the top grid
+    # candidates flipped the ranking - X=[0.7223, 0.9105, 0.4396, 0.8634] came
+    # out best at full stats (sigma=7.4739mm, alpha=0.1817, combined=2.88).
+    # All four candidates shifted sigma_x by ~+0.022mm between 40k and full
+    # stats, essentially identically regardless of X - i.e. plain shot noise
+    # at 40k stats is large enough to matter for both the ranking and the
+    # absolute readings, not a beam-file artifact (beam file confirmed
+    # randomly ordered). Decision: run every evaluation at full statistics
+    # from here on rather than search-cheap-then-refine.
+
+    # Full-statistics MOBO round: every evaluation (not just a final refine)
+    # now runs at the full beam count (ngenerate=124262, set at top of file).
+    # Bounds are +/-20% around the best full-stat point found so far
+    # (X=[0.7223, 0.9105, 0.4396, 0.8634], combined=2.88). batch_size=12
+    # matches the Mac Studio's core count exactly (no oversubscription).
+    # Expect ~30-45 min per evaluation at this ngenerate, so each 12-wide
+    # wave takes about that long regardless of parallelism - 24 initial (2
+    # waves) + 15 iterations x 12 (15 waves) = 17 waves total, roughly
+    # 8.5-13 hours. Adjust n_initial/n_iter below to fit your time budget.
+    bounds_full_stat = {
+        "b4": (0.5778, 0.8668),
+        "b5": (0.7284, 1.0926),
+        "b6": (0.3517, 0.5275),
+        "b7": (0.6907, 1.0361),
+    }
     config = OptConfig(
         objectives=["sigma_x_err", "alpha_x_err"],
         constraints={},
-        bounds=bounds_3cm,
-        n_initial=40,
-        n_iter=40,
-        batch_size=10,
-        mode = "mobo",
+        bounds=bounds_full_stat,
+        n_initial=24,
+        n_iter=15,
+        batch_size=12,
+        mode="mobo",
     )
     model = S1GLModel(Builder)
     problem = S1GLMatchMOBO(model, config, targets, scales=scales)
-    mobo = BDSIMOpt(problem, "MOBO_S1GL_40_40_10_3cm_CutBeam_N40k_SigmaAlphaPareto")
+    mobo = BDSIMOpt(problem, "MOBO_S1GL_24_15_12_FullStat_SigmaAlphaPareto")
     mobo.optimise()
     mobo.plot_results()
-    mobo.refine_pareto_front(ngenerate=124264)
 
