@@ -234,22 +234,22 @@ if __name__ == "__main__":
     targets = {
         "sigma_x": 7.5e-3,
         # "sigma_y": 7.5e-3,
-        "alpha_x": 0.0,
-        # "alpha_y": 0.0,
+        "sigma_xp": 0.0,
+        # "sigma_yp": 0.0,
     }
 
     weights = {
         "sigma_x": 2.0,
         #"sigma_y": 1.0,
-        "alpha_x": 1.0,
-        #"alpha_y": 1.0,
+        "sigma_xp": 1.0,
+        #"sigma_yp": 1.0,
     }
 
     scales = {
         "sigma_x": 1e-5,
         #"sigma_y": 1.5e-4,
-        "alpha_x": 0.15,
-        #"alpha_y": 3.0,
+        "sigma_xp": 0.15,
+        #"sigma_yp": 3.0,
     }
 
     # config = OptConfig(
@@ -589,24 +589,76 @@ if __name__ == "__main__":
     # wave takes about that long regardless of parallelism - 24 initial (2
     # waves) + 15 iterations x 12 (15 waves) = 17 waves total, roughly
     # 8.5-13 hours. Adjust n_initial/n_iter below to fit your time budget.
-    bounds_full_stat = {
-        "b4": (0.5778, 0.8668),
-        "b5": (0.7284, 1.0926),
-        "b6": (0.3517, 0.5275),
-        "b7": (0.6907, 1.0361),
+    # bounds_full_stat = {
+    #     "b4": (0.5778, 0.8668),
+    #     "b5": (0.7284, 1.0926),
+    #     "b6": (0.3517, 0.5275),
+    #     "b7": (0.6907, 1.0361),
+    # }
+    # config = OptConfig(
+    #     objectives=["sigma_x_err", "alpha_x_err"],
+    #     constraints={},
+    #     bounds=bounds_full_stat,
+    #     n_initial=24,
+    #     n_iter=15,
+    #     batch_size=12,
+    #     mode="mobo",
+    # )
+    # model = S1GLModel(Builder)
+    # problem = S1GLMatchMOBO(model, config, targets, scales=scales)
+    # mobo = BDSIMOpt(problem, "MOBO_S1GL_24_15_12_FullStat_SigmaAlphaPareto")
+    # mobo.optimise()
+    # mobo.plot_results()
+    # Result: converged to the same point as the hand-derived local search
+    # (X=[0.7223, 0.9105, 0.4396, 0.8634], combined=2.88 vs alpha target) -
+    # confirmed clean local optimum for the alpha-based metric, ~6h42m wall
+    # time (204 evals, faster than the 8.5-13h estimate). Superseded below:
+    # realised alpha_x is normalised by emittance the same way beta is by
+    # size, so a fixed alpha tolerance doesn't track a fixed physical
+    # divergence once the Gabor lenses grow emittance unevenly across
+    # candidates. Switched the second objective to sigma_xp (actual RMS
+    # divergence, extract_optics/S1GLModel/S1GLMatchMOBO updated accordingly)
+    # with the same target/tolerance convention (0.0 +/- 0.15) as alpha had.
+
+    # Quick sanity check before committing to a full search on the new
+    # objective: evaluate the Pareto front from the last full-stat round
+    # under the new sigma_xp metric, to see its actual magnitude here and
+    # confirm 0.15 is a sensible tolerance (not, e.g., orders of magnitude
+    # looser than any physically plausible divergence) before spending
+    # hours on a search that might turn out to have a near-flat 2nd
+    # objective.
+    check_points = {
+        0: [0.7223, 0.9105, 0.4396, 0.8634],
+        1: [0.74671348, 0.89498484, 0.36677166, 0.87259713],
+        2: [0.60468059, 0.93467773, 0.45552769, 0.86996422],
+        3: [0.82631137, 0.8771421, 0.50997987, 0.82043973],
+        4: [0.70587819, 0.86507612, 0.46345636, 0.87363737],
+        5: [0.68954866, 0.87351239, 0.44176398, 0.88052624],
     }
-    config = OptConfig(
-        objectives=["sigma_x_err", "alpha_x_err"],
-        constraints={},
-        bounds=bounds_full_stat,
-        n_initial=24,
-        n_iter=15,
-        batch_size=12,
-        mode="mobo",
-    )
+
     model = S1GLModel(Builder)
-    problem = S1GLMatchMOBO(model, config, targets, scales=scales)
-    mobo = BDSIMOpt(problem, "MOBO_S1GL_24_15_12_FullStat_SigmaAlphaPareto")
-    mobo.optimise()
-    mobo.plot_results()
+    results = {}
+    with ProcessPoolExecutor(max_workers=len(check_points)) as pool:
+        futures = {
+            pool.submit(model.run, np.array(x), f"sigmaxp_check_{k}"): k
+            for k, x in check_points.items()
+        }
+        for fut in as_completed(futures):
+            k = futures[fut]
+            results[k] = fut.result()
+
+    sigma_tol = scales["sigma_x"]
+    sigma_xp_tol = scales["sigma_xp"]
+    rows = []
+    for k, x in check_points.items():
+        r = results[k]
+        sigma_units = abs(r["sigma_x"] - targets["sigma_x"]) / sigma_tol
+        sigma_xp_units = abs(r["sigma_xp"] - targets["sigma_xp"]) / sigma_xp_tol
+        combined = (sigma_units**2 + sigma_xp_units**2) ** 0.5
+        rows.append((combined, x, r["sigma_x"], r["sigma_xp"]))
+
+    rows.sort(key=lambda row: row[0])
+    for combined, x, sigma_x, sigma_xp in rows:
+        print(f"X={[round(v,4) for v in x]}  sigma_x={sigma_x*1e3:.4f}mm  "
+              f"sigma_xp={sigma_xp:.4e}  combined={combined:.2f}")
 

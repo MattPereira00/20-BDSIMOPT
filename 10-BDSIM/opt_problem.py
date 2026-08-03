@@ -453,7 +453,7 @@ class OpticsMatchProblem(OptProblem):
 class S1GLMatchMOBO(OptProblem):
     """
     Two-objective version of the S1GL spot-size match: rather than
-    collapsing sigma_x/alpha_x error into one hand-weighted scalar loss,
+    collapsing sigma_x/sigma_xp error into one hand-weighted scalar loss,
     this tracks them as separate objectives and lets qEHVI map the actual
     Pareto front between them. Each error is normalised by its physical
     tolerance (from `scales`), so both objectives read as "how many
@@ -464,22 +464,22 @@ class S1GLMatchMOBO(OptProblem):
         super().__init__(model, config)
         self.targets = targets
         self.scales = scales if scales is not None else {k: 1.0 for k in targets}
-        self.objective_names = ["sigma_x_err", "alpha_x_err"]
+        self.objective_names = ["sigma_x_err", "sigma_xp_err"]
 
     def get_constraints(self):
         return []  # No constraints; we want the raw trade-off, unconstrained
 
     def objective_labels(self):
-        return ["-|sigma_x error| / tol", "-|alpha_x error| / tol"]
+        return ["-|sigma_x error| / tol", "-|sigma_xp error| / tol"]
 
     def pack_objectives(self, raw: dict) -> torch.Tensor:
         sigma_tol = self.scales.get("sigma_x", 1.0)
-        alpha_tol = self.scales.get("alpha_x", 1.0)
+        sigma_xp_tol = self.scales.get("sigma_xp", 1.0)
 
         obj_sigma = -abs(raw["sigma_x"] - self.targets["sigma_x"]) / sigma_tol
-        obj_alpha = -abs(raw["alpha_x"] - self.targets["alpha_x"]) / alpha_tol
+        obj_sigma_xp = -abs(raw["sigma_xp"] - self.targets["sigma_xp"]) / sigma_xp_tol
 
-        return torch.tensor([obj_sigma, obj_alpha], dtype=torch.double, device=self.config.device)
+        return torch.tensor([obj_sigma, obj_sigma_xp], dtype=torch.double, device=self.config.device)
 
     def format_result(self, x, y, raw):
         if raw is None:
@@ -487,7 +487,7 @@ class S1GLMatchMOBO(OptProblem):
 
         return (
             f"sigma_x={raw['sigma_x']:.4e} (tgt={self.targets['sigma_x']:.4e})  "
-            f"alpha_x={raw['alpha_x']:.4e} (tgt={self.targets['alpha_x']:.4e})  "
+            f"sigma_xp={raw['sigma_xp']:.4e} (tgt={self.targets['sigma_xp']:.4e})  "
             f"X={x.cpu().numpy()}"
         )
 
@@ -514,7 +514,7 @@ class S1GLMatchMOBO(OptProblem):
                 except Exception as e:
                     print(f"[Worker {i}] ERROR:", e)
                     raw_results[i] = None
-                    fallback = {"sigma_x": 1e6, "alpha_x": 1e6}
+                    fallback = {"sigma_x": 1e6, "sigma_xp": 1e6}
                     packed[i] = self.pack_objectives(fallback)
 
         y = torch.stack(packed, dim=0)
