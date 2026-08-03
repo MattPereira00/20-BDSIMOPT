@@ -248,7 +248,7 @@ if __name__ == "__main__":
     scales = {
         "sigma_x": 1e-5,
         #"sigma_y": 1.5e-4,
-        "sigma_xp": 0.15,
+        "sigma_xp": 1e-4,
         #"sigma_yp": 3.0,
     }
 
@@ -627,38 +627,73 @@ if __name__ == "__main__":
     # looser than any physically plausible divergence) before spending
     # hours on a search that might turn out to have a near-flat 2nd
     # objective.
-    check_points = {
-        0: [0.7223, 0.9105, 0.4396, 0.8634],
-        1: [0.74671348, 0.89498484, 0.36677166, 0.87259713],
-        2: [0.60468059, 0.93467773, 0.45552769, 0.86996422],
-        3: [0.82631137, 0.8771421, 0.50997987, 0.82043973],
-        4: [0.70587819, 0.86507612, 0.46345636, 0.87363737],
-        5: [0.68954866, 0.87351239, 0.44176398, 0.88052624],
+    # check_points = {
+    #     0: [0.7223, 0.9105, 0.4396, 0.8634],
+    #     1: [0.74671348, 0.89498484, 0.36677166, 0.87259713],
+    #     2: [0.60468059, 0.93467773, 0.45552769, 0.86996422],
+    #     3: [0.82631137, 0.8771421, 0.50997987, 0.82043973],
+    #     4: [0.70587819, 0.86507612, 0.46345636, 0.87363737],
+    #     5: [0.68954866, 0.87351239, 0.44176398, 0.88052624],
+    # }
+    #
+    # model = S1GLModel(Builder)
+    # results = {}
+    # with ProcessPoolExecutor(max_workers=len(check_points)) as pool:
+    #     futures = {
+    #         pool.submit(model.run, np.array(x), f"sigmaxp_check_{k}"): k
+    #         for k, x in check_points.items()
+    #     }
+    #     for fut in as_completed(futures):
+    #         k = futures[fut]
+    #         results[k] = fut.result()
+    #
+    # sigma_tol = scales["sigma_x"]
+    # sigma_xp_tol = scales["sigma_xp"]
+    # rows = []
+    # for k, x in check_points.items():
+    #     r = results[k]
+    #     sigma_units = abs(r["sigma_x"] - targets["sigma_x"]) / sigma_tol
+    #     sigma_xp_units = abs(r["sigma_xp"] - targets["sigma_xp"]) / sigma_xp_tol
+    #     combined = (sigma_units**2 + sigma_xp_units**2) ** 0.5
+    #     rows.append((combined, x, r["sigma_x"], r["sigma_xp"]))
+    #
+    # rows.sort(key=lambda row: row[0])
+    # for combined, x, sigma_x, sigma_xp in rows:
+    #     print(f"X={[round(v,4) for v in x]}  sigma_x={sigma_x*1e3:.4f}mm  "
+    #           f"sigma_xp={sigma_xp:.4e}  combined={combined:.2f}")
+    # Result: sigma_xp read 5.3e-4 to 1.25e-3 rad across these 6 points - with
+    # the original 0.15 tolerance every one scored <0.01 tolerance-units,
+    # making sigma_xp a total no-op (the "best" point by that combined score
+    # was actually the *worst* for divergence). Tightened tolerance to 1e-4
+    # (chosen to be meaningfully restrictive relative to the observed
+    # spread, per instruction to prefer a more restrictive tolerance).
+    # Re-scoring this same data at tol=1e-4: X=[0.7223, 0.9105, 0.4396,
+    # 0.8634] is still the best (combined=6.19) - reassuring cross-check
+    # that the earlier alpha-based optimum remains good under the corrected,
+    # properly-scaled divergence metric too.
+
+    # Full-statistics MOBO round on the corrected objective pair
+    # (sigma_x_err, sigma_xp_err), same +/-20% window as before since the
+    # underlying physical region hasn't changed - only which trade-off point
+    # within it is preferred.
+    bounds_full_stat = {
+        "b4": (0.5778, 0.8668),
+        "b5": (0.7284, 1.0926),
+        "b6": (0.3517, 0.5275),
+        "b7": (0.6907, 1.0361),
     }
-
+    config = OptConfig(
+        objectives=["sigma_x_err", "sigma_xp_err"],
+        constraints={},
+        bounds=bounds_full_stat,
+        n_initial=24,
+        n_iter=15,
+        batch_size=12,
+        mode="mobo",
+    )
     model = S1GLModel(Builder)
-    results = {}
-    with ProcessPoolExecutor(max_workers=len(check_points)) as pool:
-        futures = {
-            pool.submit(model.run, np.array(x), f"sigmaxp_check_{k}"): k
-            for k, x in check_points.items()
-        }
-        for fut in as_completed(futures):
-            k = futures[fut]
-            results[k] = fut.result()
-
-    sigma_tol = scales["sigma_x"]
-    sigma_xp_tol = scales["sigma_xp"]
-    rows = []
-    for k, x in check_points.items():
-        r = results[k]
-        sigma_units = abs(r["sigma_x"] - targets["sigma_x"]) / sigma_tol
-        sigma_xp_units = abs(r["sigma_xp"] - targets["sigma_xp"]) / sigma_xp_tol
-        combined = (sigma_units**2 + sigma_xp_units**2) ** 0.5
-        rows.append((combined, x, r["sigma_x"], r["sigma_xp"]))
-
-    rows.sort(key=lambda row: row[0])
-    for combined, x, sigma_x, sigma_xp in rows:
-        print(f"X={[round(v,4) for v in x]}  sigma_x={sigma_x*1e3:.4f}mm  "
-              f"sigma_xp={sigma_xp:.4e}  combined={combined:.2f}")
+    problem = S1GLMatchMOBO(model, config, targets, scales=scales)
+    mobo = BDSIMOpt(problem, "MOBO_S1GL_24_15_12_FullStat_SigmaXpPareto")
+    mobo.optimise()
+    mobo.plot_results()
 
