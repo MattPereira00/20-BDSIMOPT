@@ -246,7 +246,7 @@ if __name__ == "__main__":
     }
 
     scales = {
-        "sigma_x": 1e-5,
+        "sigma_x": 5e-5,
         #"sigma_y": 1.5e-4,
         "sigma_xp": 1e-4,
         #"sigma_yp": 3.0,
@@ -676,16 +676,58 @@ if __name__ == "__main__":
     # (sigma_x_err, sigma_xp_err), same +/-20% window as before since the
     # underlying physical region hasn't changed - only which trade-off point
     # within it is preferred.
-    bounds_full_stat = {
-        "b4": (0.5778, 0.8668),
-        "b5": (0.7284, 1.0926),
-        "b6": (0.3517, 0.5275),
-        "b7": (0.6907, 1.0361),
+    # bounds_full_stat = {
+    #     "b4": (0.5778, 0.8668),
+    #     "b5": (0.7284, 1.0926),
+    #     "b6": (0.3517, 0.5275),
+    #     "b7": (0.6907, 1.0361),
+    # }
+    # config = OptConfig(
+    #     objectives=["sigma_x_err", "sigma_xp_err"],
+    #     constraints={},
+    #     bounds=bounds_full_stat,
+    #     n_initial=24,
+    #     n_iter=15,
+    #     batch_size=12,
+    #     mode="mobo",
+    # )
+    # model = S1GLModel(Builder)
+    # problem = S1GLMatchMOBO(model, config, targets, scales=scales)
+    # mobo = BDSIMOpt(problem, "MOBO_S1GL_24_15_12_FullStat_SigmaXpPareto")
+    # mobo.optimise()
+    # mobo.plot_results()
+    # Result: converged to X=[0.7223, 0.9105, 0.4396, 0.8634] again
+    # (combined=6.19) - third independent confirmation of this basin.
+    # Verified against the full model (shortened to end at the arc entrance):
+    # matches the isolated model closely (sigma_x=7.473mm, sigma_xp=5.61e-4,
+    # alpha_x=+0.18) and is genuinely converging into the arc, not diverging
+    # as an earlier (misconfigured) full-model check had suggested.
+    # Follow-up: a converging beam into the arc still means a converging
+    # beam out, so better flatness (smaller sigma_xp) would reduce that
+    # effect. The Pareto front's flattest points (sigma_xp down to ~3.3e-4,
+    # vs 5.6e-4 here) all pinned b6 and b7 at their *lower* window edges,
+    # suggesting the flatness-favoring optimum sits outside the +/-20%
+    # window this round searched. Sigma_x tolerance relaxed to 5e-5 (0.05mm,
+    # per instruction that up to that error is acceptable) to let the search
+    # trade size accuracy for flatness more freely, and reopened to the full
+    # physical bounds rather than guessing a new sub-region, since the
+    # edge-pinning suggests the true optimum under this new balance may be
+    # somewhere genuinely different in the box.
+
+    # Wide-box full-statistics MOBO round under the rebalanced objective
+    # (sigma_x tolerance relaxed to 0.05mm, sigma_xp tolerance unchanged at
+    # 1e-4) - full physical bounds rather than a zoom, since the previous
+    # window's flattest candidates were edge-pinned rather than interior.
+    bounds_3cm_wide = {
+        "b4": (0.1, 1.4),
+        "b5": (0.1, 1.3),
+        "b6": (0.1, 1.3),
+        "b7": (0.1, 1.3),
     }
     config = OptConfig(
         objectives=["sigma_x_err", "sigma_xp_err"],
         constraints={},
-        bounds=bounds_full_stat,
+        bounds=bounds_3cm_wide,
         n_initial=24,
         n_iter=15,
         batch_size=12,
@@ -693,7 +735,7 @@ if __name__ == "__main__":
     )
     model = S1GLModel(Builder)
     problem = S1GLMatchMOBO(model, config, targets, scales=scales)
-    mobo = BDSIMOpt(problem, "MOBO_S1GL_24_15_12_FullStat_SigmaXpPareto")
+    mobo = BDSIMOpt(problem, "MOBO_S1GL_24_15_12_FullStat_WideBox_SigmaXpFlatness")
     mobo.optimise()
     mobo.plot_results()
 
