@@ -288,3 +288,18 @@ def extract_nominal_survival_fraction(outfile):
         return fraction_nominal_total
     else:
         return 0.0
+
+def extract_energy_selection_metrics(outfile, ke_min=14.7e-3, ke_max=15.3e-3):
+    # purity: fraction of survivors in the nominal band. yield: raw count
+    # of survivors landing in the band (catches the purity~1,
+    # near-zero-transmission degenerate case).
+    bdsimData = pybdsim.Data.Load(outfile)
+    bdsimPsData = pybdsim.Data.PhaseSpaceData(bdsimData, samplerIndexOrName=-1).data
+    KE = bdsimPsData['energy'] - 0.938272  # total energy (GeV) -> kinetic energy (GeV)
+
+    n_survived = len(KE)
+    n_nominal = int(np.sum((KE >= ke_min) & (KE <= ke_max)))
+
+    purity = (n_nominal / n_survived) if n_survived > 0 else 0.0
+
+    return purity, n_nominal

@@ -243,20 +243,33 @@ class Builder:
             "gl3_to_gl4": (s_gl3_end, s_gl4_start),
         }
 
-    def build_s1_col1(self, fname, params):
+    def build_stage1_energy_selection(self, fname, params):
+        # params = [rf_voltage, GL3B, col_aper] - matches CAPTURE+ENESELECT
+        # from the CCAP-v4.6 lattice element-by-element.
+        rf_voltage, GL3B, col_aper = params[0], params[1], params[2]
+
         self.line = pybdsim.Builder.Machine()
         self.__add_beam()
         self.__add_options()
+
+        # CAPTURE (GL1, GL2 fixed - matches the S1GL upstream optimization)
         self.line.AddDrift("StartToGL1", length=0.25)
         self.line.AddGaborLens("GL1", length=0.857, b=1.400, aper1=0.1)
         self.line.AddDrift("GL1ToGL2", length=0.3)
         self.line.AddGaborLens("GL2", length=0.857, b=0.579, aper1=0.1)
-        self.line.AddDrift("GL2ToGL3", length=1.9455)
-        self.line.AddGaborLens("GL3", length=0.857, b=0.817, aper1=0.1)
-        self.line.AddDrift("GL3ToCOL1", length=1.921)
-        self.line.AddECol("COL1", length=0.01,
-                          xsize=params[0], ysize=params[0],
-                          xsizeOut=params[1], ysizeOut=params[1],
-                          material="Fe")
+        self.line.AddDrift("GL2ToCAV1", length=0.15 + 1.0185)  # TR_VAC_DRI_04/05
 
-        self.line.Write(f"{self.model_dir}/S1_COL1_{fname}.gmad")
+        # ENESELECT
+        self.line.AddRFCavity("CAV1", length=0.26, gradient=rf_voltage / 0.26,
+                               frequency=50e6, phase=-np.pi / 2,
+                               horizontalWidth=0.3)
+        self.line.AddDrift("RFToGL3", length=0.127 + 0.24 + 0.15)  # LEL_VAC_DRI_00/01
+        self.line.AddGaborLens("GL3", length=0.857, b=GL3B, aper1=0.1)
+        self.line.AddDrift("GL3ToCOL1", length=0.15 + 1.771)  # LEL_VAC_DRI_02/03
+        self.line.AddECol("COL1", length=0.01,
+                          xsize=col_aper, ysize=col_aper, material="Fe")
+        self.line.AddDrift("COL1ToCOL2", length=0.06461 + 0.13539)  # LEL_VAC_DRI_04/05
+        self.line.AddDrift("COL2", length=0.01)  # LHA_LEL_DIA_COL_02 (stand-in drift)
+        self.line.AddDrift("CAV2", length=0.5)  # LHA_LEL_HRF_CAV_02 (stand-in drift)
+
+        self.line.Write(f"{self.model_dir}/S1_ENESELECT_{fname}.gmad")

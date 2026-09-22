@@ -575,3 +575,57 @@ class S1ColProblem(OptProblem):
                     y[i, 0] = 1e-6  # hard penalty
 
         return y, raw_results
+
+class Stage1EnergySelectionMOBO(OptProblem):
+    # Maximizes purity and yield jointly as a Pareto front.
+    def __init__(self, model, config: OptConfig):
+        super().__init__(model, config)
+        self.objective_names = ["purity", "yield"]
+
+    def get_constraints(self):
+        return []  # No constraints; want the raw trade-off, unconstrained
+
+    def objective_labels(self):
+        return ["purity", "yield"]
+
+    def pack_objectives(self, raw: dict) -> torch.Tensor:
+        n_generate = self.model.builder.Options["ngenerate"]
+        return torch.tensor(
+            [raw["purity"], raw["yield"] / n_generate],
+            dtype=torch.double, device=self.config.device,
+        )
+
+    def format_result(self, x, y, raw):
+        if raw is None:
+            return f"y={y.cpu().numpy()}  X={x.cpu().numpy()}"
+
+        return f"purity={raw['purity']:.4f}  yield={raw['yield']:.4f}  X={x.cpu().numpy()}"
+
+    def evaluate(self, x: torch.Tensor):
+        x_np = x.detach().cpu().numpy()
+        n = x_np.shape[0]
+
+        raw_results = [None] * n
+        packed = [None] * n
+
+        with ProcessPoolExecutor(max_workers=self.config.batch_size) as pool:
+            futures = {
+                pool.submit(self.model.run, x_np[i], self.run_id + i): i
+                for i in range(n)
+            }
+            self.run_id += n
+
+            for fut in as_completed(futures):
+                i = futures[fut]
+                try:
+                    raw = fut.result()
+                    raw_results[i] = raw
+                    packed[i] = self.pack_objectives(raw)
+                except Exception as e:
+                    print(f"[Worker {i}] ERROR:", e)
+                    raw_results[i] = None
+                    fallback = {"purity": 0.0, "yield": 0.0}
+                    packed[i] = self.pack_objectives(fallback)
+
+        y = torch.stack(packed, dim=0)
+        return y, raw_results

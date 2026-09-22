@@ -182,16 +182,17 @@ class S1GLModel(OptModel):
 
         return {"sigma_x": sigma_x, "sigma_y": sigma_y, "sigma_xp": sigma_xp, "sigma_yp": sigma_yp}
 
-class S1ColModel(OptModel):
+class Stage1EnergySelection(OptModel):
     def __init__(self, builder:Builder):
         self.builder = builder
         self.model_dir = self.builder.model_dir
         self.data_dir = self.builder.data_dir
 
     def run(self, x, run_id, cleanup=True):
-        self.builder.build_s1_col1(run_id, x)
+        # X = [rf_voltage, GL3B, col_aper]
+        self.builder.build_stage1_energy_selection(run_id, x)
 
-        model_path = f"{self.builder.model_dir}/S1_COL1_{run_id}.gmad"
+        model_path = f"{self.builder.model_dir}/S1_ENESELECT_{run_id}.gmad"
         outfile = f"{self.data_dir}/output-{run_id}"
 
         n_generate = self.builder.Options["ngenerate"]
@@ -205,15 +206,15 @@ class S1ColModel(OptModel):
         )
 
         # Extract variables for metrics from root file
-        nominal_survival_fraction = extract_nominal_survival_fraction(f"{outfile}.root")
+        purity, yield_count = extract_energy_selection_metrics(f"{outfile}.root")
 
         # Cleanup
         if cleanup:
             os.remove(model_path)
-            os.remove(f"{self.builder.model_dir}/S1_COL1_{run_id}_beam.gmad")
-            os.remove(f"{self.builder.model_dir}/S1_COL1_{run_id}_components.gmad")
-            os.remove(f"{self.builder.model_dir}/S1_COL1_{run_id}_options.gmad")
-            os.remove(f"{self.builder.model_dir}/S1_COL1_{run_id}_sequence.gmad")
+            os.remove(f"{self.builder.model_dir}/S1_ENESELECT_{run_id}_beam.gmad")
+            os.remove(f"{self.builder.model_dir}/S1_ENESELECT_{run_id}_components.gmad")
+            os.remove(f"{self.builder.model_dir}/S1_ENESELECT_{run_id}_options.gmad")
+            os.remove(f"{self.builder.model_dir}/S1_ENESELECT_{run_id}_sequence.gmad")
             os.remove(outfile + ".root")
 
-        return {"nominal_survival_fraction": nominal_survival_fraction}
+        return {"purity": purity, "yield": yield_count}
