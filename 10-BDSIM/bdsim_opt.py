@@ -497,4 +497,4 @@ class BDSIMOpt:
 
         ax.legend()
         plt.tight_layout()
-        plt.savefig(self.run_dir / "pareto.png")
+        plt.savefig(self.run_dir / "pareto.pdf")

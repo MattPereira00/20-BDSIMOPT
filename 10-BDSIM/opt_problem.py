@@ -578,12 +578,19 @@ class S1ColProblem(OptProblem):
 
 class Stage1EnergySelectionMOBO(OptProblem):
     # Maximizes purity and yield jointly as a Pareto front.
+    # Raw in-band count in RFT_pm100_BetterCut.dat - yield must exceed
+    # this or cavity 1 isn't net increasing the nominal-band population.
+    YIELD_BASELINE = 1221
+
     def __init__(self, model, config: OptConfig):
         super().__init__(model, config)
         self.objective_names = ["purity", "yield"]
 
     def get_constraints(self):
-        return []  # No constraints; want the raw trade-off, unconstrained
+        n_generate = self.model.builder.Options["ngenerate"]
+        threshold = self.YIELD_BASELINE / n_generate
+        idx = self.objective_index("yield")
+        return [lambda y, i=idx, v=threshold: y[..., i] - v]
 
     def objective_labels(self):
         return ["purity", "yield"]
