@@ -91,6 +91,18 @@ class OptProblem(ABC):
         ref = [-1e3] * len(self.config.objectives)
         return torch.tensor(ref, dtype=torch.double, device=self.config.device)
 
+    def plot_values(self, y: torch.Tensor) -> torch.Tensor:
+        # Hook for displaying objectives in different units; plotting only.
+        return y
+
+    def plot_baseline(self):
+        # Optional (y_value, label) drawn as a horizontal reference line.
+        return None
+
+    def plot_errors(self, y: torch.Tensor):
+        # Optional 1-sigma errors in plot units, same shape as plot_values(y).
+        return None
+
 
 class TripletCapture(OptProblem):
     def __init__(self, model, config: OptConfig):
@@ -593,7 +605,27 @@ class Stage1EnergySelectionMOBO(OptProblem):
         return [lambda y, i=idx, v=threshold: y[..., i] - v]
 
     def objective_labels(self):
-        return ["purity", "yield"]
+        return ["purity (%)", "yield increase vs primary in-band population (%)"]
+
+    def plot_baseline(self):
+        return 0.0, "Primary in-band population"
+
+    def plot_errors(self, y: torch.Tensor) -> torch.Tensor:
+        # Counting errors: yield ~ Poisson(N), purity ~ binomial(N / purity).
+        n_generate = self.model.builder.Options["ngenerate"]
+        p = y[..., 0].clamp_min(1e-12)
+        n = y[..., 1] * n_generate
+        out = torch.zeros_like(y)
+        out[..., 0] = 100.0 * torch.sqrt(p * (1 - p) * p / n.clamp_min(1.0))
+        out[..., 1] = torch.sqrt(n.clamp_min(0.0)) / self.YIELD_BASELINE * 100.0
+        return out
+
+    def plot_values(self, y: torch.Tensor) -> torch.Tensor:
+        n_generate = self.model.builder.Options["ngenerate"]
+        out = y.clone()
+        out[..., 0] = y[..., 0] * 100.0
+        out[..., 1] =(y[..., 1] * n_generate / self.YIELD_BASELINE - 1.0) * 100.0
+        return out
 
     def pack_objectives(self, raw: dict) -> torch.Tensor:
         n_generate = self.model.builder.Options["ngenerate"]

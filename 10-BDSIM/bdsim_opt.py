@@ -474,7 +474,9 @@ class BDSIMOpt:
         labels = self.problem.objective_labels()
 
         feasible = self.problem.get_feasible_mask(self.train_Y)
-        y_f = self.train_Y[feasible]
+        y_f = self.problem.plot_values(self.train_Y[feasible])
+        errp = self.problem.plot_errors(yp)
+        yp = self.problem.plot_values(yp)
 
         obj_dim = y_f.shape[-1]
         fig = plt.figure(figsize=(8, 6))
@@ -482,7 +484,15 @@ class BDSIMOpt:
         if obj_dim == 2:
             ax = fig.add_subplot(111)
             ax.scatter(y_f[:, 0], y_f[:, 1], alpha=0.3, label="Feasible")
-            ax.scatter(yp[:, 0], yp[:, 1], s=80, label="Pareto")
+            if errp is not None:
+                ax.errorbar(yp[:, 0], yp[:, 1], xerr=errp[:, 0], yerr=errp[:, 1], fmt="o",
+                            color="tab:orange", markersize=9, elinewidth=1, capsize=3,
+                            label=r"Pareto ($1\sigma$ counting error)")
+            else:
+                ax.scatter(yp[:, 0], yp[:, 1], s=80, label="Pareto")
+            baseline = self.problem.plot_baseline()
+            if baseline is not None:
+                ax.axhline(baseline[0], color="grey", linestyle="--", linewidth=1, label=baseline[1])
             ax.set_xlabel(labels[0])
             ax.set_ylabel(labels[1])
         elif obj_dim == 3:
