@@ -605,7 +605,7 @@ class Stage1EnergySelectionMOBO(OptProblem):
         return [lambda y, i=idx, v=threshold: y[..., i] - v]
 
     def objective_labels(self):
-        return ["purity (%)", "yield increase vs primary in-band population (%)"]
+        return ["Purity (%)", "Yield (%)"]
 
     def plot_baseline(self):
         return 0.0, "Primary in-band population"
