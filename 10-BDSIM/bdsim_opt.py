@@ -508,3 +508,24 @@ class BDSIMOpt:
         ax.legend()
         plt.tight_layout()
         plt.savefig(self.run_dir / "pareto.pdf")
+
+        if obj_dim == 3 and self.problem.plot_projections:
+            self._plot_projections(y_f, yp, errp, labels)
+
+    def _plot_projections(self, y_f, yp, errp, labels) -> None:
+        fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
+        for ax, (i, j) in zip(axes, ((0, 1), (0, 2), (1, 2))):
+            ax.scatter(y_f[:, i], y_f[:, j], alpha=0.3, label="Feasible")
+            if errp is not None:
+                ax.errorbar(yp[:, i], yp[:, j], xerr=errp[:, i], yerr=errp[:, j], fmt="o",
+                            color="tab:orange", markersize=7, elinewidth=1, capsize=3,
+                            label=r"Pareto ($1\sigma$ counting error)")
+            else:
+                ax.scatter(yp[:, i], yp[:, j], s=60, label="Pareto")
+            ax.set_xlabel(labels[i])
+            ax.set_ylabel(labels[j])
+            ax.grid(alpha=0.3)
+        axes[0].legend(fontsize=8)
+        fig.tight_layout()
+        fig.savefig(self.run_dir / "pareto_projections.pdf")
+        plt.close(fig)

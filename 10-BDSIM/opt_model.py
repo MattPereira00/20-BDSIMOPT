@@ -218,3 +218,39 @@ class Stage1EnergySelection(OptModel):
             os.remove(outfile + ".root")
 
         return {"purity": purity, "yield": yield_count}
+
+
+class Stage1InVitro(OptModel):
+    def __init__(self, builder:Builder):
+        self.builder = builder
+        self.model_dir = self.builder.model_dir
+        self.data_dir = self.builder.data_dir
+
+    def run(self, x, run_id, cleanup=True):
+        # X = [rf_voltage, GL3B, col_aper, rf_voltage2, mom_aper]
+        self.builder.build_stage1_invitro(run_id, x)
+
+        model_path = f"{self.builder.model_dir}/S1_INVITRO_{run_id}.gmad"
+        outfile = f"{self.data_dir}/output-{run_id}"
+
+        n_generate = self.builder.Options["ngenerate"]
+        pybdsim.Run.Bdsim(
+            gmadpath=model_path,
+            outfile=outfile,
+            batch=True,
+            seed=1999,
+            silent=True,
+            ngenerate=n_generate,
+        )
+
+        purity, yield_count, bunch_length = extract_invitro_metrics(f"{outfile}.root")
+
+        if cleanup:
+            os.remove(model_path)
+            os.remove(f"{self.builder.model_dir}/S1_INVITRO_{run_id}_beam.gmad")
+            os.remove(f"{self.builder.model_dir}/S1_INVITRO_{run_id}_components.gmad")
+            os.remove(f"{self.builder.model_dir}/S1_INVITRO_{run_id}_options.gmad")
+            os.remove(f"{self.builder.model_dir}/S1_INVITRO_{run_id}_sequence.gmad")
+            os.remove(outfile + ".root")
+
+        return {"purity": purity, "yield": yield_count, "bunch_length": bunch_length}

@@ -239,44 +239,6 @@ def extract_optics(outfile):
 
     return sigma_x, sigma_y, sigma_xp, sigma_yp
 
-def extract_stage1_diagnostics(outfile, regions):
-    """
-    Checks the two GL1-3 design conditions against a run built with
-    Builder.build_s1_gl_diagnostic:
-      - the beam should be parallel (alpha_x ~ 0) all through GL2->GL3
-      - there should be a real sigma_x waist shortly after GL3, within GL3->GL4
-
-    regions: the dict returned by build_s1_gl_diagnostic, giving the S
-    positions bounding each of those two drifts.
-    """
-    optics = pybdsim.Data.Load(outfile + "_optics.root").optics
-
-    s = np.array(optics.S())
-    alpha_x = np.array(optics.Alpha_x())
-    sigma_x = np.array(optics.Sigma_x())
-
-    def _select(s_start, s_end):
-        mask = (s >= s_start - 1e-6) & (s <= s_end + 1e-6)
-        return s[mask], alpha_x[mask], sigma_x[mask]
-
-    s23, a23, _ = _select(*regions["gl2_to_gl3"])
-    s34, _, sig34 = _select(*regions["gl3_to_gl4"])
-
-    waist_idx = int(np.argmin(sig34)) if sig34.size else None
-
-    return {
-        "gl2_to_gl3_S": s23,
-        "gl2_to_gl3_alpha_x": a23,
-        "gl2_to_gl3_max_abs_alpha": float(np.max(np.abs(a23))) if a23.size else None,
-        "gl3_to_gl4_S": s34,
-        "gl3_to_gl4_sigma_x": sig34,
-        "waist_S": float(s34[waist_idx]) if waist_idx is not None else None,
-        "waist_sigma_x": float(sig34[waist_idx]) if waist_idx is not None else None,
-        "waist_distance_from_gl3": (
-            float(s34[waist_idx] - regions["gl3_to_gl4"][0]) if waist_idx is not None else None
-        ),
-    }
-
 def extract_nominal_survival_fraction(outfile):
     bdsimData = pybdsim.Data.Load(outfile)
     bdsimPsData = pybdsim.Data.PhaseSpaceData(bdsimData, samplerIndexOrName=-1).data
@@ -303,3 +265,20 @@ def extract_energy_selection_metrics(outfile, ke_min=14.7e-3, ke_max=15.3e-3):
     purity = (n_nominal / n_survived) if n_survived > 0 else 0.0
 
     return purity, n_nominal
+
+
+def extract_invitro_metrics(outfile, ke_min=14.7e-3, ke_max=15.3e-3):
+    # Same purity/yield as the energy-selection metrics, plus bunch length:
+    # 2 sigma (full width, ns) of the arrival time T of in-band survivors.
+    bdsimData = pybdsim.Data.Load(outfile)
+    ps = pybdsim.Data.PhaseSpaceData(bdsimData, samplerIndexOrName=-1).data
+    KE = ps['energy'] - 0.938272
+    in_band = (KE >= ke_min) & (KE <= ke_max)
+
+    n_survived = len(KE)
+    n_nominal = int(np.sum(in_band))
+
+    purity = (n_nominal / n_survived) if n_survived > 0 else 0.0
+    bunch_length = 2.0 * float(np.std(ps['T'][in_band])) if n_nominal > 1 else float("nan")
+
+    return purity, n_nominal, bunch_length

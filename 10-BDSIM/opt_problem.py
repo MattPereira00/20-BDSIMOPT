@@ -1,3 +1,4 @@
+import math
 import torch
 from opt_loss import *
 from typing import Callable, List, Dict
@@ -102,6 +103,9 @@ class OptProblem(ABC):
     def plot_errors(self, y: torch.Tensor):
         # Optional 1-sigma errors in plot units, same shape as plot_values(y).
         return None
+
+    # Three-objective problems can also write pairwise projections.
+    plot_projections = False
 
 
 class TripletCapture(OptProblem):
@@ -639,6 +643,93 @@ class Stage1EnergySelectionMOBO(OptProblem):
             return f"y={y.cpu().numpy()}  X={x.cpu().numpy()}"
 
         return f"purity={raw['purity']:.4f}  yield={raw['yield']:.4f}  X={x.cpu().numpy()}"
+
+    def evaluate(self, x: torch.Tensor):
+        x_np = x.detach().cpu().numpy()
+        n = x_np.shape[0]
+
+        raw_results = [None] * n
+        packed = [None] * n
+
+        with ProcessPoolExecutor(max_workers=self.config.batch_size) as pool:
+            futures = {
+                pool.submit(self.model.run, x_np[i], self.run_id + i): i
+                for i in range(n)
+            }
+            self.run_id += n
+
+            for fut in as_completed(futures):
+                i = futures[fut]
+                try:
+                    raw = fut.result()
+                    raw_results[i] = raw
+                    packed[i] = self.pack_objectives(raw)
+                except Exception as e:
+                    print(f"[Worker {i}] ERROR:", e)
+                    raw_results[i] = None
+                    fallback = {"purity": 0.0, "yield": 0.0}
+                    packed[i] = self.pack_objectives(fallback)
+
+        y = torch.stack(packed, dim=0)
+        return y, raw_results
+
+
+class Stage1InVitroMOBO(OptProblem):
+    # Maximizes purity and yield, minimizes in-band bunch length at the S1 in-vitro end station.
+    YIELD_BASELINE = 1221  # raw in-band count in RFT_pm100_BetterCut.dat
+    BUNCH_REF_NS = 5.35  # 2 sigma bunch length, cavity 2 off, 1.57 mm front point
+    BUNCH_PENALTY = 10.0  # bunch-length ratio assigned when it can't be measured
+    plot_projections = True
+
+    def __init__(self, model, config: OptConfig):
+        super().__init__(model, config)
+        self.objective_names = ["purity", "yield", "bunch_length"]
+
+    def get_constraints(self):
+        idx = self.objective_index("yield")
+        return [lambda y, i=idx: y[..., i] - 1.0]
+
+    def get_ref_point(self) -> torch.Tensor:
+        # purity 0, yield at the baseline, bunch length 1.5x the reference
+        return torch.tensor([0.0, 1.0, -1.5], dtype=torch.double, device=self.config.device)
+
+    def objective_labels(self):
+        return ["Purity (%)", "Yield (%)", "Bunch Length (ns)"]
+
+    def _bunch_ns(self, y: torch.Tensor) -> torch.Tensor:
+        return -y[..., 2] * self.BUNCH_REF_NS
+
+    def plot_values(self, y: torch.Tensor) -> torch.Tensor:
+        out = y.clone()
+        out[..., 0] = y[..., 0] * 100.0
+        out[..., 1] = (y[..., 1] - 1.0) * 100.0
+        out[..., 2] = self._bunch_ns(y)
+        return out
+
+    def plot_errors(self, y: torch.Tensor) -> torch.Tensor:
+        # Counting errors: yield ~ Poisson(N), purity ~ binomial(N / purity), rms width ~ L / sqrt(2(N - 1)).
+        p = y[..., 0].clamp_min(1e-12)
+        n = y[..., 1] * self.YIELD_BASELINE
+        out = torch.zeros_like(y)
+        out[..., 0] = 100.0 * torch.sqrt(p * (1 - p) * p / n.clamp_min(1.0))
+        out[..., 1] = torch.sqrt(n.clamp_min(0.0)) / self.YIELD_BASELINE * 100.0
+        out[..., 2] = self._bunch_ns(y) / torch.sqrt(2.0 * (n - 1.0).clamp_min(1.0))
+        return out
+
+    def pack_objectives(self, raw: dict) -> torch.Tensor:
+        bunch = raw.get("bunch_length", float("nan"))
+        ratio = bunch / self.BUNCH_REF_NS if math.isfinite(bunch) else self.BUNCH_PENALTY
+        return torch.tensor(
+            [raw["purity"], raw["yield"] / self.YIELD_BASELINE, -ratio],
+            dtype=torch.double, device=self.config.device,
+        )
+
+    def format_result(self, x, y, raw):
+        if raw is None:
+            return f"y={y.cpu().numpy()}  X={x.cpu().numpy()}"
+
+        return (f"purity={raw['purity']:.4f}  yield={raw['yield']:.4f}  "
+                f"bunch_length={raw['bunch_length']:.4f}  X={x.cpu().numpy()}")
 
     def evaluate(self, x: torch.Tensor):
         x_np = x.detach().cpu().numpy()

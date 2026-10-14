@@ -176,82 +176,7 @@ class Builder:
 
         self.line.Write(f"{self.model_dir}/S1GL_{fname}.gmad")
 
-    def __add_segmented_drift(self, base_name, length, n_segments):
-        """Splits a drift into n_segments equal parts separated by markers,
-        so rebdsimOptics reports optics at several points inside it instead
-        of only at its start/end."""
-        seg_length = length / n_segments
-        for i in range(n_segments):
-            self.line.AddDrift(f"{base_name}_seg{i + 1}", length=seg_length)
-            if i < n_segments - 1:
-                self.line.AddMarker(f"{base_name}_mk{i + 1}")
-
-    def build_s1_gl_diagnostic(self, fname, b1=1.400, b2=0.579, b3=0.817,
-                                b4=1.309, b5=0.535, b6=0.785, b7=0.065,
-                                n_seg_23=6, n_seg_34=12):
-        """
-        Same S1GL line as build_s1_gl, but with the GL2->GL3 and GL3->GL4
-        drifts split into short segments (with markers between them) so
-        rebdsimOptics reports alpha_x/sigma_x at several points inside
-        those drifts instead of only at their endpoints.
-
-        Used to check the GL2-GL3 "parallel beam" condition (alpha_x ~ 0
-        throughout the drift) and the post-GL3 focus condition (a real
-        sigma_x minimum shortly into the GL3->GL4 drift).
-
-        Returns the S positions bounding the GL2->GL3 and GL3->GL4 regions
-        so extract_stage1_diagnostics can select exactly those points.
-        """
-        self.line = pybdsim.Builder.Machine()
-        self.__add_beam()
-        self.__add_options()
-
-        self.line.AddDrift("StartToGL1", length=0.25)
-        self.line.AddGaborLens("GL1", length=0.857, b=b1, aper1=0.1)
-        self.line.AddDrift("GL1ToGL2", length=0.3)
-        self.line.AddGaborLens("GL2", length=0.857, b=b2, aper1=0.1)
-
-        s_gl2_end = 0.25 + 0.857 + 0.3 + 0.857
-
-        gl2_to_gl3_length = 1.9455
-        self.__add_segmented_drift("GL2ToGL3", gl2_to_gl3_length, n_seg_23)
-
-        s_gl3_start = s_gl2_end + gl2_to_gl3_length
-
-        self.line.AddGaborLens("GL3", length=0.857, b=b3, aper1=0.1)
-
-        s_gl3_end = s_gl3_start + 0.857
-
-        gl3_to_gl4_length = 2.8456
-        self.__add_segmented_drift("GL3ToGL4", gl3_to_gl4_length, n_seg_34)
-
-        s_gl4_start = s_gl3_end + gl3_to_gl4_length
-
-        self.line.AddGaborLens("GL4", length=0.857, b=b4, aper1=0.1)
-        self.line.AddDrift("GL4ToGL5", length=0.8)
-        self.line.AddGaborLens("GL5", length=0.857, b=b5, aper1=0.1)
-        self.line.AddDrift("GL5ToGL6", length=3.2)
-        self.line.AddGaborLens("GL6", length=0.857, b=b6, aper1=0.1)
-        self.line.AddDrift("GL6ToGL7", length=0.8)
-        self.line.AddGaborLens("GL7", length=0.857, b=b7, aper1=0.1)
-        self.line.AddDrift("GL7ToARC", length=2.27)
-
-        self.line.Write(f"{self.model_dir}/S1GL_diag_{fname}.gmad")
-
-        return {
-            "gl2_to_gl3": (s_gl2_end, s_gl3_start),
-            "gl3_to_gl4": (s_gl3_end, s_gl4_start),
-        }
-
-    def build_stage1_energy_selection(self, fname, params):
-        # params = [rf_voltage, GL3B, col_aper] - matches CAPTURE+ENESELECT
-        # from the CCAP-v4.6 lattice element-by-element.
-        rf_voltage, GL3B, col_aper = params[0], params[1], params[2]
-
-        self.line = pybdsim.Builder.Machine()
-        self.__add_beam()
-        self.__add_options()
-
+    def __add_capture_and_eneselect(self, rf_voltage, GL3B, col_aper):
         # CAPTURE (GL1, GL2 fixed - matches the S1GL upstream optimization)
         self.line.AddDrift("StartToGL1", length=0.25)
         self.line.AddGaborLens("GL1", length=0.857, b=1.400, aper1=0.1)
@@ -270,6 +195,75 @@ class Builder:
                           xsize=col_aper, ysize=col_aper, material="Fe")
         self.line.AddDrift("COL1ToCOL2", length=0.06461 + 0.13539)  # LEL_VAC_DRI_04/05
         self.line.AddDrift("COL2", length=0.01)  # LHA_LEL_DIA_COL_02 (stand-in drift)
+
+    def build_stage1_energy_selection(self, fname, params):
+        # params = [rf_voltage, GL3B, col_aper] - matches CAPTURE+ENESELECT
+        # from the CCAP-v4.6 lattice element-by-element.
+        rf_voltage, GL3B, col_aper = params[0], params[1], params[2]
+
+        self.line = pybdsim.Builder.Machine()
+        self.__add_beam()
+        self.__add_options()
+
+        self.__add_capture_and_eneselect(rf_voltage, GL3B, col_aper)
         self.line.AddDrift("CAV2", length=0.5)  # LHA_LEL_HRF_CAV_02 (stand-in drift)
 
         self.line.Write(f"{self.model_dir}/S1_ENESELECT_{fname}.gmad")
+
+    S1GL_B4_B7 = (0.7223, 0.9105, 0.4396, 0.8634)  # CCAP-v4.6 GL4B-GL7B
+
+    def build_stage1_invitro(self, fname, params):
+        # params = [rf_voltage, GL3B, col_aper, rf_voltage2, mom_aper] - CAPTURE
+        # through the S1 in-vitro line end station, element-by-element from CCAP-v4.6.
+        rf_voltage, GL3B, col_aper, rf_voltage2, mom_aper = params[:5]
+        b4, b5, b6, b7 = self.S1GL_B4_B7
+
+        self.line = pybdsim.Builder.Machine()
+        self.__add_beam()
+        self.__add_options()
+
+        self.__add_capture_and_eneselect(rf_voltage, GL3B, col_aper)
+        self.line.AddRFCavity("CAV2", length=0.26, gradient=rf_voltage2 / 0.26,
+                               frequency=50e6, phase=-np.pi / 2,
+                               horizontalWidth=0.3)
+
+        # MATCHING
+        self.line.AddDrift("RFToGL4", length=0.0546 + 0.24 + 0.15)  # LEL_VAC_DRI_06/07
+        self.line.AddGaborLens("GL4", length=0.857, b=b4, aper1=0.1)
+        self.line.AddDrift("GL4ToGL5", length=0.15 + 0.5 + 0.15)  # LEL_VAC_DRI_08/09/10
+        self.line.AddGaborLens("GL5", length=0.857, b=b5, aper1=0.1)
+        self.line.AddDrift("GL5ToGL6", length=0.15 + 2.9 + 0.15)  # LEL_VAC_DRI_11/12/13
+        self.line.AddGaborLens("GL6", length=0.857, b=b6, aper1=0.1)
+        self.line.AddDrift("GL6ToGL7", length=0.15 + 0.5 + 0.15)  # LEL_VAC_DRI_14/15/16
+        self.line.AddGaborLens("GL7", length=0.857, b=b7, aper1=0.1)
+        self.line.AddDrift("GL7ToOCT", length=0.15 + 0.45)  # LEL_VAC_DRI_17/17a
+        self.line.AddOctupole("OCT1", length=0.1, k3=0)
+        self.line.AddDrift("OCTToSD", length=0.15 + 0.84 + 0.15)  # LEL_VAC_DRI_18, DIP_01_dr, DRI_19
+
+        # S1SDCOL (transverse cleaning collimator is a drift in the lattice)
+        self.line.AddDrift("COL3", length=0.05)
+        self.line.AddDrift("COL3ToARC", length=0.18 + 0.2)  # LEL_VAC_DRI_19a/20
+
+        # S1INVITRO vertical arc
+        tilt = -np.pi / 2
+        self.line.AddDipole("ARCDIP1", category="sbend", length=0.8, angle=np.pi / 4, tilt=tilt)
+        self.line.AddDrift("DIP1ToQ1", length=0.2)
+        self.line.AddQuadrupole("ARCQ1", length=0.1, k1=-22.544, tilt=tilt, aper1=0.05)
+        self.line.AddDrift("Q1ToQ2", length=0.4)
+        self.line.AddQuadrupole("ARCQ2", length=0.1, k1=31.3768, tilt=tilt, aper1=0.05)
+        self.line.AddDrift("Q2ToQ3", length=0.2)
+        self.line.AddQuadrupole("ARCQ3", length=0.1, k1=-31.5123, tilt=tilt, aper1=0.05)
+        self.line.AddDrift("Q3ToMOMCOL", length=0.2 - 0.005)
+        self.line.AddECol("MOMCOL", length=0.01, xsize=0.018, ysize=mom_aper, material="Fe")
+        self.line.AddDrift("MOMCOLToQ4", length=0.2 - 0.005)
+        self.line.AddQuadrupole("ARCQ4", length=0.1, k1=-31.5123, tilt=tilt, aper1=0.05)
+        self.line.AddDrift("Q4ToQ5", length=0.2)
+        self.line.AddQuadrupole("ARCQ5", length=0.1, k1=31.3768, tilt=tilt, aper1=0.05)
+        self.line.AddDrift("Q5ToQ6", length=0.4)
+        self.line.AddQuadrupole("ARCQ6", length=0.1, k1=-22.544, tilt=tilt, aper1=0.05)
+        self.line.AddDrift("Q6ToDIP2", length=0.2)
+        self.line.AddDipole("ARCDIP2", category="sbend", length=0.8, angle=np.pi / 4, tilt=tilt)
+        self.line.AddDrift("DIP2ToEND", length=0.2)  # LEL_VAC_DRI_29
+        self.line.AddDrift("ENDSTATION", length=2.0)  # LEL_VAC_DRI_30, drift to end station
+
+        self.line.Write(f"{self.model_dir}/S1_INVITRO_{fname}.gmad")
