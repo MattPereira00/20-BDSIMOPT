@@ -7,6 +7,7 @@ from typing import List, Tuple, Optional, Dict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 from botorch.models import SingleTaskGP, ModelListGP
+from botorch.models.transforms import Normalize, Standardize
 from botorch.fit import fit_gpytorch_mll
 from gpytorch.mlls import ExactMarginalLogLikelihood
 
@@ -78,7 +79,12 @@ class BDSIMOpt:
 
         models = []
         for i in range(y.shape[-1]):
-            gp = SingleTaskGP(x, y[..., i:i + 1])
+            # Unit-cube inputs and standardised outputs keep the fit well conditioned.
+            gp = SingleTaskGP(
+                x, y[..., i:i + 1],
+                input_transform=Normalize(d=x.shape[-1], bounds=self._tr_bounds_tensor()),
+                outcome_transform=Standardize(m=1),
+            )
             mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
             fit_gpytorch_mll(mll)
             models.append(gp)
