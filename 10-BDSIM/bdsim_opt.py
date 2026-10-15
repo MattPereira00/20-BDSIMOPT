@@ -101,10 +101,11 @@ class BDSIMOpt:
             ref_point=self.problem.get_ref_point().tolist(),
             partitioning=partitioning,
             sampler=sampler,
+            # Repo constraints are positive when feasible; BoTorch wants negative, hence the sign flip.
             # An empty list (no constraints) still reads as "not None" internally,
             # which triggers a codepath needing an eta buffer that only gets
             # registered when constraints is truthy - pass None instead of [].
-            constraints=self.problem.get_constraints() or None,
+            constraints=[lambda y, c=c: -c(y) for c in self.problem.get_constraints()] or None,
         )
 
     def get_pareto_front(self) -> Tuple[torch.Tensor, torch.Tensor, List[dict]]:
@@ -147,6 +148,38 @@ class BDSIMOpt:
         self.train_X = x
         self.train_Y = y
         self.train_raw = list(raw)
+
+        self._write_log(f"\n--- Initial data ({x.shape[0]} points) ---")
+        self._log_results(x, y, raw)
+
+    def _log_results(self, x, y, raw_list) -> None:
+        feasible = (
+            self.problem.get_feasible_mask(y)
+            if self.config.mode == "mobo"
+            else torch.ones(y.shape[0], dtype=torch.bool)
+        )
+        for i in range(y.shape[0]):
+            raw = raw_list[i]
+            if raw is None:
+                prefix = "[CRASH]"
+                raw = "No output"
+            elif not feasible[i]:
+                prefix = "[INFEASIBLE]"
+            else:
+                prefix = "[OK]"
+
+            self._write_log(prefix + " " + self.problem.format_result(x[i], y[i], raw))
+
+    def _save_checkpoint(self, it_done: int) -> None:
+        torch.save(
+            {"X": self.train_X, "Y": self.train_Y, "raw": self.train_raw, "it_done": it_done},
+            self.run_dir / "checkpoint.pt",
+        )
+
+    def _load_checkpoint(self) -> int:
+        ckpt = torch.load(self.run_dir / "checkpoint.pt", weights_only=False)
+        self.train_X, self.train_Y, self.train_raw = ckpt["X"], ckpt["Y"], ckpt["raw"]
+        return ckpt["it_done"]
 
     def _within_tolerance(self, raw) -> bool:
         for key, target in self.problem.targets.items():
@@ -275,8 +308,16 @@ class BDSIMOpt:
             )
             self._tr_reset(fresh)
 
-    def optimise(self) -> None:
-        self.generate_initial_data()
+    def optimise(self, resume: bool = False) -> None:
+        # resume=True continues from run_dir/checkpoint.pt; n_iter then counts further iterations.
+        if resume:
+            if self.config.use_trust_region:
+                raise NotImplementedError("resume does not restore trust-region state")
+            self._load_checkpoint()
+            self._write_log(f"\n--- Resuming from checkpoint ({self.train_X.shape[0]} points) ---")
+        else:
+            self.generate_initial_data()
+            self._save_checkpoint(0)
 
         if self.config.use_trust_region:
             dim = len(self.config.bounds)
@@ -301,6 +342,7 @@ class BDSIMOpt:
                 q=self.config.batch_size,
                 num_restarts=10,
                 raw_samples=64,
+                options=self.config.acq_options,
             )
 
             y_new, raw_new = self.problem.evaluate(x_new)
@@ -312,26 +354,8 @@ class BDSIMOpt:
             if self.config.use_trust_region:
                 self._tr_update(model, x_new, n_new=x_new.shape[0])
 
-            feasible = (
-                self.problem.get_feasible_mask(y_new)
-                if self.config.mode == "mobo"
-                else torch.ones(y_new.shape[0], dtype=torch.bool)
-            )
-
-            for i in range(y_new.shape[0]):
-                raw = raw_new[i]
-                if raw is None:
-                    prefix = "[CRASH]"
-                    raw = "No output"
-                elif not feasible[i]:
-                    prefix = "[INFEASIBLE]"
-                else:
-                    prefix = "[OK]"
-
-                self._write_log(prefix + " " + self.problem.format_result(x_new[i], y_new[i], raw))
-                #if self.config.mode == "scalar" and feasible[i] and self._within_tolerance(raw):
-                #    self._write_log("Target achieved within tolerance, stopping optimisation.")
-                #    return
+            self._log_results(x_new, y_new, raw_new)
+            self._save_checkpoint(it + 1)
 
         if self.config.mode == "mobo":
             xp, yp, rawp = self.get_pareto_front()
