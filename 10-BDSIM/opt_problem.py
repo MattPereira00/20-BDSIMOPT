@@ -690,8 +690,8 @@ class Stage1InVitroMOBO(OptProblem):
         return [lambda y, i=idx: y[..., i] - 1.0]
 
     def get_ref_point(self) -> torch.Tensor:
-        # purity 0, yield at the baseline, bunch length 1.5x the reference
-        return torch.tensor([0.0, 1.0, -1.5], dtype=torch.double, device=self.config.device)
+        # purity 0, yield at the baseline, bunch length 1.2x the reference
+        return torch.tensor([0.0, 1.0, -1.2], dtype=torch.double, device=self.config.device)
 
     def objective_labels(self):
         return ["Purity (%)", "Yield (%)", "Bunch Length (ns)"]
