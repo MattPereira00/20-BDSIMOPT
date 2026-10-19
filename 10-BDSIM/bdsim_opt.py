@@ -178,14 +178,22 @@ class BDSIMOpt:
 
     def _save_checkpoint(self, it_done: int) -> None:
         torch.save(
-            {"X": self.train_X, "Y": self.train_Y, "raw": self.train_raw, "it_done": it_done},
+            {"X": self.train_X, "Y": self.train_Y, "raw": self.train_raw, "it_done": it_done,
+             "tr": self._tr_state()},
             self.run_dir / "checkpoint.pt",
         )
 
-    def _load_checkpoint(self) -> int:
+    def _tr_state(self):
+        if not self.config.use_trust_region or self.tr_center is None:
+            return None
+        return {"center": self.tr_center, "length": self.tr_length,
+                "succ": self.tr_succ_count, "fail": self.tr_fail_count}
+
+    def _load_checkpoint(self) -> Optional[dict]:
+        # Returns the saved trust-region state, if any.
         ckpt = torch.load(self.run_dir / "checkpoint.pt", weights_only=False)
         self.train_X, self.train_Y, self.train_raw = ckpt["X"], ckpt["Y"], ckpt["raw"]
-        return ckpt["it_done"]
+        return ckpt.get("tr")
 
     def _within_tolerance(self, raw) -> bool:
         for key, target in self.problem.targets.items():
@@ -316,10 +324,10 @@ class BDSIMOpt:
 
     def optimise(self, resume: bool = False) -> None:
         # resume=True continues from run_dir/checkpoint.pt; n_iter then counts further iterations.
+        # With trust region and no saved state, it starts around the best loaded point at tr_length_init.
+        saved_tr = None
         if resume:
-            if self.config.use_trust_region:
-                raise NotImplementedError("resume does not restore trust-region state")
-            self._load_checkpoint()
+            saved_tr = self._load_checkpoint()
             self._write_log(f"\n--- Resuming from checkpoint ({self.train_X.shape[0]} points) ---")
         else:
             self.generate_initial_data()
@@ -329,6 +337,10 @@ class BDSIMOpt:
             dim = len(self.config.bounds)
             self._tr_reset(center=torch.full((dim,), 0.5, dtype=self.dtype, device=self.device))
             self._tr_recentre()  # immediately overwritten to the best initial point
+            if saved_tr is not None:
+                self.tr_center, self.tr_length = saved_tr["center"], saved_tr["length"]
+                self.tr_succ_count, self.tr_fail_count = saved_tr["succ"], saved_tr["fail"]
+                self._write_log(f"[trust-region] restored: length={self.tr_length:.4f}")
 
         for it in range(self.config.n_iter):
             model = self.build_model(self.train_X, self.train_Y).to(self.device)
