@@ -57,6 +57,10 @@ class BDSIMOpt:
             self.tr_length: Optional[float] = None
             self.tr_succ_count = 0
             self.tr_fail_count = 0
+            self.tr_anchor: Optional[torch.Tensor] = None  # centre of the basin being refined after a restart
+            self.tr_converged: List[torch.Tensor] = []  # normalised centres of finished basins
+            self.tr_restarts = 0
+            self.tr_stop = False
 
     def _write_log(self, text: str) -> None:
         self.logger.info(text)
@@ -187,7 +191,9 @@ class BDSIMOpt:
         if not self.config.use_trust_region or self.tr_center is None:
             return None
         return {"center": self.tr_center, "length": self.tr_length,
-                "succ": self.tr_succ_count, "fail": self.tr_fail_count}
+                "succ": self.tr_succ_count, "fail": self.tr_fail_count,
+                "anchor": self.tr_anchor, "converged": self.tr_converged,
+                "restarts": self.tr_restarts, "stop": self.tr_stop}
 
     def _load_checkpoint(self) -> Optional[dict]:
         # Returns the saved trust-region state, if any.
@@ -247,17 +253,51 @@ class BDSIMOpt:
         hv = Hypervolume(ref_point=self.problem.get_ref_point())
         return hv.compute(y_f[pareto_mask])
 
+    def _tr_candidates(self, y=None, x=None):
+        """Normalised inputs and scores (lower is better) of the usable training points.
+        mobo: squared distance to the ideal point; scalar: the loss."""
+        y = self.train_Y if y is None else y
+        x = self.train_X if x is None else x
+        bounds = self._tr_bounds_tensor()
+        if self.config.mode == "scalar":
+            return normalize(x, bounds), y.view(-1), None
+        mask = self.problem.get_feasible_mask(y)
+        if int(mask.sum()) == 0:
+            return normalize(x[:0], bounds), y.new_empty(0), None
+        y_f = y[mask]
+        ideal = y_f.max(dim=0).values
+        return normalize(x[mask], bounds), (y_f - ideal).pow(2).sum(dim=-1), ideal
+
+    def _tr_local(self, x_norm: torch.Tensor) -> torch.Tensor:
+        # Points within the current basin (everything, until the first restart).
+        if self.tr_anchor is None:
+            return torch.ones(x_norm.shape[0], dtype=torch.bool, device=x_norm.device)
+        return (x_norm - self.tr_anchor).abs().max(dim=-1).values <= self.config.tr_basin_radius
+
     def _tr_check_success(self, model, x_new: torch.Tensor, n_new: int) -> bool:
         """
         Did this batch actually improve things? Uses the GP's posterior mean
         at the new points rather than the raw observations, since BDSIM's
         finite-statistics noise can otherwise read a lucky/unlucky batch as a
-        false success/failure.
+        false success/failure. After a restart, only the basin being refined counts.
         """
         with torch.no_grad():
             posterior_mean = model.posterior(x_new).mean
 
         y_before = self.train_Y[:-n_new]
+
+        if self.tr_anchor is not None:
+            x_before = self.train_X[:-n_new]
+            xn, score, ideal = self._tr_candidates(y_before, x_before)
+            if self.config.mode != "scalar" and ideal is None:
+                return True
+            local = self._tr_local(xn)
+            best_before = score[local].min() if bool(local.any()) else torch.tensor(float("inf"), dtype=score.dtype)
+            if self.config.mode == "scalar":
+                new_best = torch.exp(-posterior_mean.view(-1)).min()  # model is fit on -log(loss)
+            else:
+                new_best = (posterior_mean - ideal).pow(2).sum(dim=-1).min()
+            return bool(new_best < best_before - 1e-9)
 
         if self.config.mode == "scalar":
             # model was fit on _scalar_transform(y) already, so posterior_mean
@@ -271,25 +311,46 @@ class BDSIMOpt:
         return hv_after > hv_before + 1e-9
 
     def _tr_recentre(self) -> None:
-        """Move the trust-region centre to whichever point best represents
-        the current incumbent: the best (scalar) loss, or (mobo) the Pareto
-        point closest to the ideal point - i.e. the best simultaneous
-        trade-off found so far, not just whichever objective improved most."""
+        """Move the trust-region centre to the best point of the basin being
+        refined: the best loss (scalar) or the point closest to the ideal point
+        (mobo), i.e. the best simultaneous trade-off, not just whichever
+        objective improved most."""
+        xn, score, _ = self._tr_candidates()
+        local = self._tr_local(xn)
+        if xn.shape[0] == 0 or not bool(local.any()):
+            return
+        best = torch.argmin(torch.where(local, score, torch.full_like(score, float("inf"))))
+        self.tr_center = xn[best].clamp(0.0, 1.0).clone()
+
+    def _tr_on_collapse(self) -> None:
+        """The window has shrunk to nothing: this basin has converged locally.
+        Restart in the best unexplored basin, or stop if none is left."""
         bounds = self._tr_bounds_tensor()
+        self.tr_converged.append(self.tr_center.clone())
+        phys = unnormalize(self.tr_center.unsqueeze(0), bounds).squeeze(0).tolist()
+        self._write_log(f"[trust-region] converged locally at {[round(v, 6) for v in phys]}")
 
-        if self.config.mode == "scalar":
-            best_idx = torch.argmin(self.train_Y.view(-1))
-            best_x = self.train_X[best_idx : best_idx + 1]
-        else:
-            xp, yp, _ = self.get_pareto_front()
-            if xp.shape[0] == 0:
-                return
-            ideal = yp.max(dim=0).values
-            dists = (yp - ideal).pow(2).sum(dim=-1)
-            best_idx = torch.argmin(dists)
-            best_x = xp[best_idx : best_idx + 1]
+        cap = self.config.tr_max_restarts
+        if cap is not None and self.tr_restarts >= cap:
+            self._write_log("[trust-region] restart cap reached; stopping")
+            self.tr_stop = True
+            return
 
-        self.tr_center = normalize(best_x, bounds).squeeze(0).clamp(0.0, 1.0)
+        xn, score, _ = self._tr_candidates()
+        free = torch.ones(xn.shape[0], dtype=torch.bool, device=xn.device)
+        for c in self.tr_converged:
+            free &= (xn - c).abs().max(dim=-1).values > self.config.tr_basin_radius
+        if not bool(free.any()):
+            self._write_log("[trust-region] no unexplored candidates left; stopping")
+            self.tr_stop = True
+            return
+
+        idx = torch.nonzero(free).squeeze(-1)[torch.argmin(score[free])]
+        self.tr_anchor = xn[idx].clone()
+        self.tr_restarts += 1
+        self._tr_reset(self.tr_anchor)
+        phys = unnormalize(self.tr_anchor.unsqueeze(0), bounds).squeeze(0).tolist()
+        self._write_log(f"[trust-region] restart {self.tr_restarts} around {[round(v, 6) for v in phys]}")
 
     def _tr_update(self, model, x_new: torch.Tensor, n_new: int) -> None:
         improved = self._tr_check_success(model, x_new, n_new)
@@ -311,16 +372,7 @@ class BDSIMOpt:
         self._tr_recentre()
 
         if self.tr_length < self.config.tr_length_min:
-            # Region has collapsed (converged locally) - restart fresh
-            # elsewhere in the box to avoid getting stuck at a local optimum.
-            bounds = self._tr_bounds_tensor()
-            sobol = torch.quasirandom.SobolEngine(dimension=bounds.shape[1])
-            fresh = sobol.draw(1).to(dtype=self.dtype, device=self.device).squeeze(0)
-            self._write_log(
-                f"[trust-region] window collapsed (length < {self.config.tr_length_min}); "
-                f"restarting around a fresh point"
-            )
-            self._tr_reset(fresh)
+            self._tr_on_collapse()
 
     def optimise(self, resume: bool = False) -> None:
         # resume=True continues from run_dir/checkpoint.pt; n_iter then counts further iterations.
@@ -340,6 +392,8 @@ class BDSIMOpt:
             if saved_tr is not None:
                 self.tr_center, self.tr_length = saved_tr["center"], saved_tr["length"]
                 self.tr_succ_count, self.tr_fail_count = saved_tr["succ"], saved_tr["fail"]
+                self.tr_anchor, self.tr_converged = saved_tr.get("anchor"), saved_tr.get("converged", [])
+                self.tr_restarts = saved_tr.get("restarts", 0)  # a saved stop is not restored, so a run can be extended
                 self._write_log(f"[trust-region] restored: length={self.tr_length:.4f}")
 
         for it in range(self.config.n_iter):
@@ -374,6 +428,8 @@ class BDSIMOpt:
 
             self._log_results(x_new, y_new, raw_new)
             self._save_checkpoint(it + 1)
+            if self.tr_stop:
+                break
 
         if self.config.mode == "mobo":
             xp, yp, rawp = self.get_pareto_front()

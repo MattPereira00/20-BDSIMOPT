@@ -21,6 +21,8 @@ class OptConfig:
     use_trust_region: bool = False
     tr_length_init: float = 0.8   # initial window size, as a fraction of `bounds`
     tr_length_min: float = 0.5 ** 7  # below this, the region has collapsed
+    tr_basin_radius: float = 0.3  # normalised radius of a basin: restarts go at least this far from converged centres
+    tr_max_restarts: Optional[int] = None  # cap on restarts after a collapse; None = until no candidates remain
     tr_length_max: float = 1.6    # capped at 1.0 in practice (can't exceed `bounds`)
     tr_succ_tol: int = 3          # consecutive improving batches before expanding
     tr_fail_tol: Optional[int] = None  # consecutive non-improving batches before
