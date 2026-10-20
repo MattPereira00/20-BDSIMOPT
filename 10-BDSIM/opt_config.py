@@ -10,6 +10,7 @@ class OptConfig:
     n_iter: int
     batch_size: int
     mc_samples: int = 64
+    max_front_points: Optional[int] = None  # thin the Pareto front used in the acquisition partitioning (None = keep all)
     acq_options: Optional[dict] = None  # passed to optimize_acqf (e.g. batch_limit, init_batch_limit, maxiter)
     mode: str = 'mobo' # 'mobo' or 'scalar'
     device: str = 'cpu'

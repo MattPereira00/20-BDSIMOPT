@@ -102,6 +102,7 @@ class BDSIMOpt:
             return qLogExpectedImprovement(model=model, best_f=best_f, sampler=sampler, eta=1e-3)
 
         _, pareto_y, _ = self.get_pareto_front()
+        pareto_y = self._thin_front(pareto_y)
         y_for_part = pareto_y if pareto_y.shape[0] > 0 else self.train_Y.new_empty((0, self.train_Y.shape[1]))
 
         partitioning = NondominatedPartitioning(ref_point=self.problem.get_ref_point(), Y=y_for_part)
@@ -117,6 +118,21 @@ class BDSIMOpt:
             # registered when constraints is truthy - pass None instead of [].
             constraints=[lambda y, c=c: -c(y) for c in self.problem.get_constraints()] or None,
         )
+
+    def _thin_front(self, y: torch.Tensor) -> torch.Tensor:
+        # Keep at most max_front_points well-spread points (farthest-point sampling in
+        # range-normalised objective space); the partition cost grows steeply with front size.
+        k = self.config.max_front_points
+        if k is None or y.shape[0] <= k:
+            return y
+        z = (y - y.min(dim=0).values) / (y.max(dim=0).values - y.min(dim=0).values).clamp_min(1e-12)
+        chosen = [int((z - z.mean(dim=0)).norm(dim=-1).argmax())]
+        nearest = (z - z[chosen[0]]).norm(dim=-1)
+        while len(chosen) < k:
+            i = int(nearest.argmax())
+            chosen.append(i)
+            nearest = torch.minimum(nearest, (z - z[i]).norm(dim=-1))
+        return y[torch.tensor(chosen, device=y.device)]
 
     def get_pareto_front(self) -> Tuple[torch.Tensor, torch.Tensor, List[dict]]:
         input_dim = self.train_X.shape[1] if self.train_X is not None else len(self.config.bounds)
