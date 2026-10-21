@@ -485,6 +485,12 @@ class S1GLMatchMOBO(OptProblem):
     def get_constraints(self):
         return []  # No constraints; we want the raw trade-off, unconstrained
 
+    # Reference point in tolerance units: only the region near the target counts toward the hypervolume.
+    REF_ERRORS = (60.0, 60.0)
+
+    def get_ref_point(self) -> torch.Tensor:
+        return torch.tensor([-e for e in self.REF_ERRORS], dtype=torch.double, device=self.config.device)
+
     def objective_labels(self):
         return ["-|sigma_x error| / tol", "-|sigma_xp error| / tol"]
 
